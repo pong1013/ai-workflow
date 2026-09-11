@@ -1,0 +1,6 @@
+interface:
+  display_name: "Ship Feature"
+  short_description: "Drive a feature from discovery through delivery"
+  default_prompt: "Use $ship-feature to build this feature through review and explicitly approved delivery."
+policy:
+  allow_implicit_invocation: false

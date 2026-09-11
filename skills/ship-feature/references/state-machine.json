@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "initialState": "contract",
+  "terminalStates": ["complete", "cancelled", "blocked"],
+  "states": [
+    "contract",
+    "workspace",
+    "intake",
+    "resume",
+    "grill",
+    "specification",
+    "ticketing",
+    "implementation-testing",
+    "review",
+    "exception",
+    "delivery",
+    "complete",
+    "cancelled",
+    "blocked"
+  ],
+  "transitions": [
+    {"from": "contract", "event": "contract-established", "to": "workspace", "gate": null, "automatic": true},
+    {"from": "workspace", "event": "reuse-clean-workspace", "to": "intake", "gate": null, "automatic": true},
+    {"from": "workspace", "event": "approve-workspace-change", "to": "intake", "gate": "workspace", "automatic": false},
+    {"from": "intake", "event": "confirm-recommended-grill", "to": "grill", "gate": "intake", "automatic": false},
+    {"from": "intake", "event": "confirm-recommended-direct-spec", "to": "specification", "gate": "intake", "automatic": false},
+    {"from": "intake", "event": "explicit-start-grill", "to": "grill", "gate": "invocation", "automatic": true},
+    {"from": "intake", "event": "explicit-skip-grill", "to": "specification", "gate": "invocation", "automatic": true},
+    {"from": "intake", "event": "resume-artifact", "to": "resume", "gate": null, "automatic": true},
+    {"from": "resume", "event": "approve-resumed-specification", "to": "ticketing", "gate": "resume", "automatic": false},
+    {"from": "resume", "event": "approve-resumed-tickets", "to": "implementation-testing", "gate": "resume", "automatic": false},
+    {"from": "resume", "event": "revise-artifact", "to": "specification", "gate": null, "automatic": false},
+    {"from": "grill", "event": "decisions-settled", "to": "specification", "gate": null, "automatic": true},
+    {"from": "specification", "event": "approve-specification", "to": "ticketing", "gate": "specification", "automatic": false},
+    {"from": "ticketing", "event": "tickets-created", "to": "implementation-testing", "gate": null, "automatic": true},
+    {"from": "implementation-testing", "event": "workers-joined", "to": "review", "gate": null, "automatic": true},
+    {"from": "review", "event": "owned-findings", "to": "implementation-testing", "gate": null, "automatic": true},
+    {"from": "review", "event": "verification-and-review-pass", "to": "delivery", "gate": null, "automatic": true},
+    {"from": "delivery", "event": "approve-delivery", "to": "complete", "gate": "delivery", "automatic": false},
+    {"from": "exception", "event": "decision-received", "to": "$resume", "gate": "exception", "automatic": false}
+  ],
+  "interruptions": {
+    "from": ["contract", "workspace", "intake", "resume", "grill", "specification", "ticketing", "implementation-testing", "review", "delivery"],
+    "to": "exception",
+    "when": "new-consequential-decision-risk-conflict-missing-capability-or-stall"
+  },
+  "termination": {
+    "from": "any-nonterminal-state",
+    "events": ["cancel", "genuine-blocker"],
+    "to": ["cancelled", "blocked"]
+  },
+  "authorities": [
+    {"id": "invocation", "kind": "invocation-directive"},
+    {"id": "feature-request", "kind": "invocation-scope"},
+    {"id": "contract-persistence", "kind": "human-gate"},
+    {"id": "workspace", "kind": "human-gate"},
+    {"id": "workspace-established", "kind": "state-evidence"},
+    {"id": "intake", "kind": "human-gate"},
+    {"id": "specification", "kind": "human-gate"},
+    {"id": "resume", "kind": "human-gate"},
+    {"id": "exception", "kind": "human-gate"},
+    {"id": "delivery", "kind": "human-gate"},
+    {"id": "feature-request-and-workspace", "kind": "composite", "requires": ["feature-request", "workspace-established"]}
+  ],
+  "externalOperations": [
+    {"operation": "persist-project-contract", "state": "contract", "authorizedBy": "contract-persistence"},
+    {"operation": "create-feature-branch", "state": "workspace", "authorizedBy": "workspace"},
+    {"operation": "write-specification", "state": "specification", "authorizedBy": "feature-request-and-workspace"},
+    {"operation": "create-tickets", "state": "ticketing", "authorizedBy": "specification"},
+    {"operation": "write-repository", "state": "implementation-testing", "authorizedBy": "specification"},
+    {"operation": "stage", "state": "delivery", "authorizedBy": "delivery"},
+    {"operation": "commit", "state": "delivery", "authorizedBy": "delivery"},
+    {"operation": "push", "state": "delivery", "authorizedBy": "delivery"},
+    {"operation": "create-review-request", "state": "delivery", "authorizedBy": "delivery"}
+  ]
+}
