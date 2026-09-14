@@ -1,7 +1,7 @@
 {
   "name": "ai-workflow",
-  "version": "0.1.0",
-  "description": "A Codex-only workflow that drives one feature from discovery through reviewed delivery.",
+  "version": "0.2.0",
+  "description": "A gated Codex feature workflow built from pinned Matt Pocock-derived engineering Skills.",
   "author": {
     "name": "pong1013",
     "url": "https://github.com/pong1013"
@@ -13,12 +13,12 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "AI Workflow",
-    "shortDescription": "Ship features through a gated Codex workflow.",
-    "longDescription": "Drive one feature from repository discovery and specification through parallel implementation and testing, independent review, and explicitly approved delivery.",
+    "shortDescription": "Run features through a gated AI workflow.",
+    "longDescription": "Drive one feature through repository setup, Project Contract discovery, Grill, GitHub specification and tickets, two-agent implementation and quality, ticket commits, verification, review, and explicitly approved pull-request delivery.",
     "developerName": "pong1013",
     "category": "Productivity",
     "capabilities": ["Interactive", "Write", "Multi-agent"],
     "websiteURL": "https://github.com/pong1013/ai-workflow",
-    "defaultPrompt": ["Use $ship-feature to build this feature through review and delivery."]
+    "defaultPrompt": ["Use $ai-workflow to run this feature through review and explicitly approved delivery."]
   }
 }

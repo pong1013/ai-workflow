@@ -1,0 +1,6 @@
+interface:
+  display_name: "TDD"
+  short_description: "Build behavior through approved red-green slices"
+  default_prompt: "Use $tdd to build this behavior test-first at the agreed public seam."
+policy:
+  allow_implicit_invocation: false

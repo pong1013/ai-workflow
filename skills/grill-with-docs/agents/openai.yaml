@@ -1,0 +1,6 @@
+interface:
+  display_name: "Grill with Docs"
+  short_description: "Stress-test a design and record durable decisions"
+  default_prompt: "Use $grill-with-docs to stress-test this design and record only settled domain knowledge."
+policy:
+  allow_implicit_invocation: false

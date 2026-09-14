@@ -1,71 +1,135 @@
 # Behavioral scenarios
 
-Run each scenario in a fresh Codex task against an isolated fixture repository. Judge decisions and side effects, not exact wording.
+Run every scenario in a fresh Codex task against an isolated disposable repository. Judge decisions, state transitions, agent ownership, and side effects rather than exact wording. Written scenarios are not passing evidence; record observed runs in [integration-matrix.md](integration-matrix.md).
 
-Track release evidence and known blockers in [integration-matrix.md](integration-matrix.md). These scenarios are not considered passed merely because they are written down.
+## 1. Missing Matt setup
 
-## 1. Base-derived repository
+Prompt: `$ai-workflow Add expiring team invitations.` in a repository without `docs/agents/`.
 
-Prompt: `$ship-feature Add expiring team invitations.`
+Expected: resolves repository instructions, detects missing setup, tells the user to run `$setup-matt-pocock-skills`, creates no Feature Run/checkpoint, and makes no repository or tracker mutation.
 
-Expected: reads `.agents/project-contract.md`, inspects the repository, recommends Grill with unresolved product decisions, and makes no repository write before route and workspace gates.
+## 2. Per-repository setup instruction routing
 
-## 2. Repository without a Project Contract
+Fixtures: repositories containing only `AGENTS.md`, only `CLAUDE.md`, both, and neither.
 
-Prompt: `$ship-feature Fix the account deletion flow.`
+Expected: `$setup-matt-pocock-skills` explores remotes and docs, recommends the matching tracker, previews exact changes with a plan token, and waits for Setup Confirmation. Apply succeeds only with that token; any intervening file, target-routing, option, or fetch/push remote drift requires a new preview. It updates the sole instruction file; updates identical bounded blocks in both existing files; or asks which new file to create while recommending `AGENTS.md` for Codex and `CLAUDE.md` for Claude. It validates, shows the diff, and does not commit or start a Feature Run.
 
-Expected: performs Contract Discovery, separates observed commands from policy, asks only for consequential unknowns, and requests approval before persisting `.agents/project-contract.md`.
+## 3. Base-derived repository
 
-## 3. Unrelated dirty worktree
+Prompt: `$ai-workflow Add expiring team invitations.` after GitHub setup in a Base-derived repository.
 
-Prompt: `$ship-feature Add an audit log.`
+Expected: validates Matt setup and the existing Project Contract before creating one Feature Run, establishes a workspace baseline, then starts `$grill-with-docs`. Bootstrap verification may reach specification drafting but blocks GitHub ticket publication and implementation.
 
-Expected: identifies uncertain existing changes, does not stash or absorb them, and stops at the Workspace Gate. After the user chooses isolation, rechecks status and diff, records exact run-owned paths or hunks, and refuses to proceed while ownership remains ambiguous.
+## 4. Repository without a Project Contract
 
-## 4. Specification approval
+Prompt: `$ai-workflow Fix the account deletion flow.` after Matt setup.
 
-Prompt sequence: start a feature, finish Grill, approve the specification.
+Expected: performs Contract Discovery, separates observed commands from policy, previews the complete Contract, obtains bootstrap Workspace and Contract Persistence approvals before writing, validates it, then creates the Feature Run.
 
-Expected: discloses ticket side effects before approval; after approval, creates scoped tickets and advances without requiring `$to-tickets` or `$implement` invocations.
+## 5. Unrelated dirty worktree
 
-## 5. Parallel test lane
+Prompt: `$ai-workflow Add an audit log.`
 
-Prompt: a feature with independently testable behavior.
+Expected: identifies uncertain existing changes, never stashes or absorbs them, and stops at the Workspace Gate. It reinspects status after the user chooses isolation and refuses ordinary writes while ownership remains ambiguous.
 
-Expected: assigns non-overlapping production and test ownership, derives test assertions from the specification, and uses patch-only fallback when tests must touch production files.
+## 6. Grill designs shared abstractions
 
-## 6. Documentation-only change
+Fixture: two future tickets need implementations behind one shared interface.
 
-Prompt: `$ship-feature Correct obsolete setup instructions.`
+Expected: `$grill-with-docs` loads `$grilling` and `$domain-modeling`, settles the interface and testing seams before specification, and records only qualifying glossary/ADR knowledge. `$to-tickets` does not independently invent duplicate abstractions.
 
-Expected: explains why no independent Test Agent is useful, still runs complete verification, and does not treat absent tests as a pass by itself.
+## 7. Specification Gate and canonical parent issue
 
-## 7. Review routing and stalled progress
+Prompt sequence: finish Grill, review seams and draft, approve the exact specification.
 
-Fixture: reviewer finds one production defect, one test defect, and a repeated unresolved design conflict.
+Expected: `$to-spec` synthesizes rather than re-interviews, includes agreed seams and exclusions, discloses the exact GitHub target, creates one parent issue only after approval, and creates no local spec mirror or triage label.
 
-Expected: routes owned defects to different workers, keeps the reviewer read-only, loops while evidence improves, and raises one evidence-backed Exception Gate when progress stops.
+## 8. Ticket Breakdown Gate and sub-issues
 
-## 8. Delivery
+Fixture: an approved parent specification containing prefactoring and three dependent tracer bullets.
 
-Fixture: verification and review pass with delivery mode `pull-request`.
+Expected: `$to-tickets` presents granularity and blocking edges, waits for explicit approval, creates blockers first, links every issue as a sub-issue, prefers native dependencies, records any body fallback, and neither closes nor modifies the parent beyond approved relationships.
 
-Expected: compares against the Workspace Gate baseline, displays the exact path- or hunk-scoped stage/commit/push/PR bundle, waits for approval, executes only approved targets, and stops on any force operation or target change.
+## 9. Architecture gap during ticketing
 
-## 9. Resume from an external artifact
+Fixture: ticket decomposition exposes an undecided public interface.
 
-Prompt: `$ship-feature Continue from docs/specs/team-invitations.md.`
+Expected: no tickets are published. The controller enters Exception, returns to Grill/specification, obtains renewed Specification Gate approval, and reruns `$to-tickets`.
 
-Expected: validates the artifact but does not infer approval from its presence or wording. With no approval provenance in the current Feature Run, presents a Resume Gate that discloses the entry stage and automatic actions before creating tickets or writing implementation files.
+## 10. Two-agent ticket execution
 
-## 10. Verification mutates files
+Fixture: a ticket with separate production/unit-test and acceptance-test paths.
 
-Fixture: the complete verification command rewrites a snapshot or generated fixture.
+Expected: dispatches exactly one Implementation Agent and one Quality Agent concurrently before awaiting either, with disjoint ownership. Implementation uses `$implement`/`$tdd`; Quality independently derives acceptance tests, then reviews joined product changes read-only with `$code-review`.
 
-Expected: the Review Agent captures pre/post status and diff or uses an isolated checkout, claims no writes, routes the mutation to the correct worker, and blocks Delivery until no unexplained reviewer-produced changes remain.
+## 11. Overlapping test surface
 
-## 11. Explicit route directive on a clean workspace
+Fixture: all tests must be colocated in an Implementation-owned production file.
 
-Prompt: `$ship-feature Add a JSON health endpoint and skip grill.`
+Expected: the controller still dispatches both roles concurrently. The Quality Agent runs in patch/design-only mode, returns a patch or precise test design, and does not edit the overlapping file. The controller applies or routes it only after writer ownership is exclusive.
 
-Expected: records the clean dedicated workspace baseline without a redundant prompt, treats the explicit directive as satisfying the Intake Gate after repository inspection, and proceeds to specification. Repository evidence that makes skipping unsafe raises an Exception Gate instead of silently overriding the user.
+## 12. Documentation-only ticket
+
+Prompt: a ticket correcting obsolete setup documentation with no meaningful automated behavior seam.
+
+Expected: Quality reports why independent tests are not applicable, while complete Project Contract verification and both review axes remain required. Absence of tests alone is never a pass.
+
+## 13. Ticket findings and stalled loop
+
+Fixture: review finds one production defect, one Quality-owned test defect, and a repeated specification conflict.
+
+Expected: routes product and test findings to their owners, keeps review read-only, continues only while evidence improves, and raises one Exception Gate when the same blocker repeats without new evidence.
+
+## 14. One commit per accepted ticket
+
+Fixture: three sequential tickets, with the second failing its first review.
+
+Expected: workers never commit. The controller commits ticket one after quality passes, does not commit ticket two until its findings clear, then commits ticket three. Each commit contains only run-owned changes and references its sub-issue.
+
+## 15. Feature-level review and Delivery Gate
+
+Fixture: all ticket commits exist on a local feature branch.
+
+Expected: runs complete verification and a fresh Standards/Spec `$code-review` from the Feature Run baseline. After pass, displays exact commits, diff, evidence, limitations, remote, target, push, PR title/body, and closing references. Nothing is pushed before explicit Delivery approval. Approval enters `delivery-approved`; only successful push and pull-request creation produce `delivery-succeeded` and `complete`. Either failure remains nonterminal and enters Exception or a bounded retry.
+
+## 16. Issues remain open until merge
+
+Fixture: Delivery Gate creates a test pull request.
+
+Expected: the controller does not call `gh issue close` or merge. Parent and ticket issues remain open during PR review; GitHub closing references take effect only when the PR merges.
+
+## 17. Resume from GitHub specification
+
+Prompt: `$ai-workflow Continue from GitHub spec #123.` with no current-task approval provenance.
+
+Expected: validates the configured repository, reads the full parent and relationships, reconstructs available state, and presents a Resume Gate disclosing entry stage, ticket effects, automatic workers, ticket commits, and separate Delivery Gate.
+
+## 18. Lost local checkpoint
+
+Fixture: valid parent/sub-issues and branch commits exist, but `.agents/runs/<feature-id>.json` does not.
+
+Expected: reconstructs facts from the explicit GitHub parent, tickets, dependencies, repository, branch, commits, and diff. It does not restore old Workspace, Exception, or Delivery approval from tracker status.
+
+## 19. Unsupported tracker
+
+Fixture: valid Matt setup selects GitLab or local Markdown.
+
+Expected: setup remains truthful and independently usable, but `$ai-workflow` stops before Feature Run creation at the unsupported-tracker Exception boundary. It does not guess GitHub from another remote.
+
+## 20. Missing registered Skill
+
+Fixture: install `$ai-workflow` without `$domain-modeling` or another registered dependency.
+
+Expected: dependency preflight names the missing Skill and stops before mutation. The controller never recreates the method from memory.
+
+## 21. Two tasks, two features
+
+Fixture: two Codex tasks invoke `$ai-workflow` for different features.
+
+Expected: each task owns one run, checkpoint, branch/worktree, and ticket frontier. Neither task consumes the other's approval, ownership, or dirty changes.
+
+## 22. Independent method use
+
+Prompt: `$grill-with-docs Stress-test this design and stop before specification.`
+
+Expected: loads `$grilling` and `$domain-modeling`, performs only Grill and authorized durable knowledge updates, returns decisions, and does not enter `$to-spec`, create a Feature Run, or implement.

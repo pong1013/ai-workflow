@@ -1,0 +1,6 @@
+interface:
+  display_name: "Setup Matt Pocock Skills"
+  short_description: "Configure one repository for the workflow Skills"
+  default_prompt: "Use $setup-matt-pocock-skills to configure this repository's tracker and domain docs without committing."
+policy:
+  allow_implicit_invocation: false

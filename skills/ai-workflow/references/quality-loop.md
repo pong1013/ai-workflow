@@ -1,0 +1,34 @@
+# Ticket Workers and Quality Loop
+
+Create exactly two top-level worker roles for each ticket.
+
+## Ownership plan
+
+Before delegation, assign disjoint paths or hunks and record them in the run envelope. Dispatch both top-level workers concurrently before awaiting either one:
+
+- Implementation Agent: production code and, when useful, implementation-owned unit tests used for `$tdd`.
+- Quality Agent: independent acceptance or integration tests, verification evidence, and read-only product review.
+
+No two writers may own the same path or hunk concurrently. An inability to isolate test writes does not serialize the roles: launch the Quality Agent concurrently in patch/design-only mode. When independent tests must be colocated with implementation-owned content, the Quality Agent returns a patch or precise test design without writing it.
+
+## Implementation Agent
+
+Give the agent the approved parent specification, current ticket, agreed seams, repository instructions, Project Contract, baseline, and ownership. It invokes the adapted `$implement`, uses `$tdd` only within assigned ownership, runs focused checks, and returns mutations, evidence, and blockers. It never commits, pushes, publishes tracker content, changes the specification, or approves its own work.
+
+## Quality Agent
+
+Give the agent the specification and ticket independently of implementation reasoning. It derives tests from the approved behavior and seams, records pre-implementation failing evidence when timing and isolation permit, and writes only Quality-owned files. After worker writes join, it verifies the combined ticket and invokes `$code-review` read-only against the ticket baseline.
+
+`$code-review` may use parallel Standards and Spec sub-reviewers internally. They are read-only review perspectives, not additional top-level writer roles. The Quality Agent must not claim independent review of tests it authored; report that limitation explicitly.
+
+## Routing
+
+- Production findings return to the Implementation Agent.
+- Test defects or coverage gaps return to the Quality Agent.
+- New public interfaces, shared abstractions, scope changes, or missing architecture enter the Exception Gate and return to Grill/specification when required.
+- Re-run focused and complete verification, ownership checks, and read-only review after fixes.
+- Continue while evidence changes. Stop when the same blocker repeats without new evidence.
+
+## Ticket acceptance
+
+A ticket passes only when acceptance criteria are covered, focused checks and complete Contract verification pass, no blocking Standards or Spec finding remains, and post-verification status contains no unexplained mutation. Only then may the controller create the ticket commit.

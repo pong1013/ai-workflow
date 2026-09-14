@@ -14,8 +14,8 @@
 
 ## Work artifacts
 
-- Specifications: `docs/specs/`
-- Ticket backend: unconfigured
+- Specifications: configured by `docs/agents/issue-tracker.md`
+- Ticket backend: configured by `docs/agents/issue-tracker.md`
 
 ## Workspace
 

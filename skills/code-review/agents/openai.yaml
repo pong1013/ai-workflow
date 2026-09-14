@@ -1,0 +1,6 @@
+interface:
+  display_name: "Code Review"
+  short_description: "Review one diff against standards and specification"
+  default_prompt: "Use $code-review to review this run-owned diff read-only against repository standards and its specification."
+policy:
+  allow_implicit_invocation: false

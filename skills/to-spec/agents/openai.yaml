@@ -1,0 +1,6 @@
+interface:
+  display_name: "To Spec"
+  short_description: "Publish settled decisions as a GitHub specification"
+  default_prompt: "Use $to-spec to turn these settled decisions into an approved GitHub specification."
+policy:
+  allow_implicit_invocation: false

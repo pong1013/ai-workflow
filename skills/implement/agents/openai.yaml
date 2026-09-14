@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement"
+  short_description: "Implement approved work without creating commits"
+  default_prompt: "Use $implement to implement this approved ticket within the assigned ownership and do not commit."
+policy:
+  allow_implicit_invocation: false
