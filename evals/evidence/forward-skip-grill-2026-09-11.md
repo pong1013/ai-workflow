@@ -1,4 +1,6 @@
-# Forward test — explicit skip Grill
+# Historical forward test — superseded 0.1 controller
+
+> This evidence covers the removed `$ship-feature` controller and its former skip-Grill path. It is retained only as historical review context and is not evidence for Full Workflow v1, whose new-feature path always enters Grill.
 
 Date: 2026-09-11
 

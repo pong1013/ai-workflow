@@ -1,6 +1,6 @@
 # Third-party notices
 
-The Grill stage is adapted from Matt Pocock's `grill-with-docs`, `grilling`, and `domain-modeling` Skills from [`mattpocock/skills`](https://github.com/mattpocock/skills).
+The `setup-matt-pocock-skills`, `grill-with-docs`, `grilling`, `domain-modeling`, `to-spec`, `to-tickets`, `implement`, `tdd`, and `code-review` Skills are vendored or adapted from Matt Pocock's [`mattpocock/skills`](https://github.com/mattpocock/skills) at the exact source revision and adaptation boundaries recorded in [UPSTREAM.md](UPSTREAM.md).
 
 ```text
 MIT License

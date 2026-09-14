@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+FENCED_CODE = re.compile(r"^(```|~~~).*?^\1[ \t]*$", re.MULTILINE | re.DOTALL)
 
 
 def main() -> None:
@@ -21,6 +22,7 @@ def main() -> None:
         if ".git" in markdown.parts:
             continue
         text = markdown.read_text(encoding="utf-8")
+        text = FENCED_CODE.sub("", text)
         for raw_target in LINK.findall(text):
             target = raw_target.split("#", 1)[0].strip().strip("<>")
             if not target or target.startswith(("http://", "https://", "mailto:", "/")):
