@@ -146,6 +146,21 @@ EXPECTED_QUALITY_POLICY = {
         "sameBlockerWithoutNewEvidence": "exception",
     },
 }
+EXPECTED_INTERACTION_POLICY = {
+    "workflowReply": {
+        "requiredFields": ["stage", "progress", "pendingDecisionOrBlocker", "nextStep"],
+        "nameActiveGate": True,
+        "reportActualStateBeforeTransition": True,
+    },
+    "grill": {
+        "maxConsequentialQuestionsPerReply": 1,
+        "showQuestionNumber": True,
+        "showPrerequisite": True,
+        "showKnownQueuedDecisions": True,
+        "recomputeAfterEachAnswer": True,
+        "includeDomainModelingQuestions": True,
+    },
+}
 
 
 def main() -> None:
@@ -218,6 +233,8 @@ def main() -> None:
 
     if model.get("qualityPolicy") != EXPECTED_QUALITY_POLICY:
         errors.append("quality policy differs from the v1 contract")
+    if model.get("interactionPolicy") != EXPECTED_INTERACTION_POLICY:
+        errors.append("interaction policy differs from the workflow contract")
 
     authorities = {}
     for item in model.get("authorities", []):

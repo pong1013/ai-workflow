@@ -16,6 +16,9 @@ This is the release gate, not a roadmap claim. Deterministic checks prove reposi
 | `$setup-matt-pocock-skills` behavior | yes | not run | Run scenarios for `AGENTS.md`, `CLAUDE.md`, both, and neither in disposable repos; confirm preview, gate, idempotency, and no commit. |
 | Missing setup stops before Feature Run | yes | not run | Requires a fresh task against an isolated unconfigured fixture. |
 | New feature Grill through GitHub parent issue | yes | not run | Requires disposable GitHub Issues and explicit Specification Gate approval. |
+| Stage and Gate progress in every reply | yes | not run | Run [scenario 23](scenarios.md) in a fresh task; inspect every reply across Gates, ordinary progress, and Exception. Deterministic state-model policy is separate evidence. |
+| One consequential Grill question per reply | yes | not run | Run [scenario 24](scenarios.md) with two initial decisions plus a later ADR decision; reject any reply containing two decision questions. The negative state-model fixture only checks policy integrity. |
+| Independent `$grilling` and composed `$grill-with-docs` | yes | not run | Run [scenario 25](scenarios.md) in separate fresh tasks; verify the interview and domain documentation roles. |
 | Ticket Breakdown through GitHub sub-issues/dependencies | yes | not run | Requires disposable GitHub Issues and explicit Ticket Breakdown approval; record native/fallback behavior. |
 | Two-agent ticket execution and patch-only overlap fallback | yes | not run | Requires a Base-derived fixture with safe disjoint test and product surfaces. |
 | One local commit per accepted ticket | yes | not run | Requires behavioral observation of a multi-ticket run; no push is needed for this row. |

@@ -26,6 +26,10 @@ Read only the references needed for the current stage:
 - Keep one run envelope containing repository identity, state, requested stopping point, Project Contract, workspace baseline, GitHub parent and ticket identifiers, approvals, ownership, verification, findings, and checkpoint path.
 - Never treat a filename, tracker label, issue state, branch, or commit message as approval provenance.
 
+## Show progress in every reply
+
+Start every `$ai-workflow` user-facing reply with a compact status line naming the current state or Gate, completed milestone and ticket progress when known, the pending decision or blocker (or "none"), and the next step. This includes repository setup, Contract, and Workspace preflight before the Feature Run exists, as well as interim updates, Grill questions, Gate requests, stopping-point reports, and final reports. Before run creation, label the pre-run phase explicitly; afterward use the state names in `state-machine.json`. Name an active Gate explicitly. If a transition has not happened, report the existing state; do not imply approval or completion from a proposed action. Explain the question flow at Grill: show the current question number, its prerequisite, and known queued decisions without promising a fixed total.
+
 ## Route the full path
 
 1. Complete repository setup and Project Contract preflight before creating the Feature Run.
@@ -48,7 +52,7 @@ The public method chain is:
 $grill-with-docs -> $to-spec -> $to-tickets -> $implement/$tdd -> $code-review
 ```
 
-`$setup-matt-pocock-skills` is a prerequisite, not an automatically invoked stage. `$grill-with-docs` composes `$grilling` and `$domain-modeling` as in the pinned upstream design.
+`$setup-matt-pocock-skills` is a prerequisite, not an automatically invoked stage. `$grilling` can independently interview the user through a design tree. `$grill-with-docs` composes it with `$domain-modeling` to record settled repository terminology and decisions. When invoked by this controller, both follow the same one-consequential-question-per-reply limit, including domain or ADR questions.
 
 ## Stop and resume
 

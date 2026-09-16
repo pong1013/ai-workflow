@@ -256,6 +256,38 @@ test_state_model_rejects_wrong_stage_skill() {
   ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
 }
 
+test_state_model_requires_reply_progress_and_one_grill_question() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+model = json.loads(pathlib.Path(sys.argv[1]).read_text())
+policy = model["interactionPolicy"]
+assert policy["grill"]["maxConsequentialQuestionsPerReply"] == 1
+assert {
+    "stage",
+    "progress",
+    "pendingDecisionOrBlocker",
+    "nextStep",
+} <= set(policy["workflowReply"]["requiredFields"])
+PY
+}
+
+test_state_model_rejects_batched_grill_questions() {
+  local fixture="${TEST_TEMP_ROOT}/batched-grill-questions.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["interactionPolicy"]["grill"]["maxConsequentialQuestionsPerReply"] = 2'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_missing_reply_progress() {
+  local fixture="${TEST_TEMP_ROOT}/missing-reply-progress.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["interactionPolicy"]["workflowReply"]["requiredFields"].remove("progress")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
 test_state_model_rejects_duplicate_transition() {
   local fixture="${TEST_TEMP_ROOT}/duplicate-transition.json"
   mutate_json "${STATE_MODEL}" "${fixture}" \
@@ -794,6 +826,9 @@ run_test "state model rejects an unbounded review loop" test_state_model_rejects
 run_test "state model rejects an incorrect finding route" test_state_model_rejects_wrong_finding_route
 run_test "state model rejects a mutating review policy" test_state_model_rejects_mutating_review
 run_test "state model rejects a substituted stage Skill" test_state_model_rejects_wrong_stage_skill
+run_test "state model requires reply progress and one Grill question" test_state_model_requires_reply_progress_and_one_grill_question
+run_test "state model rejects batched Grill questions" test_state_model_rejects_batched_grill_questions
+run_test "state model rejects missing reply progress" test_state_model_rejects_missing_reply_progress
 run_test "state model rejects a duplicate transition" test_state_model_rejects_duplicate_transition
 run_test "state model rejects a duplicate external operation" test_state_model_rejects_duplicate_operation
 run_test "state model rejects an unknown state" test_state_model_rejects_unknown_state

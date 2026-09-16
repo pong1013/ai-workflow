@@ -7,8 +7,8 @@ No installer or runtime workflow fetches upstream content. Updating this pin is 
 | Local Skill | Upstream source | Adaptation boundary |
 | --- | --- | --- |
 | `setup-matt-pocock-skills` | `skills/engineering/setup-matt-pocock-skills/` | Adds Setup Confirmation authority, dual `AGENTS.md`/`CLAUDE.md` generated blocks, no-commit finish, credential protection, and disclosure that this release executes GitHub only. |
-| `grill-with-docs` | `skills/engineering/grill-with-docs/` | Preserves composition of `grilling` and `domain-modeling`; adds Project Contract workspace/knowledge authority and controller handoff. |
-| `grilling` | `skills/productivity/grilling/` | Adds no-implementation and controller-return boundaries. |
+| `grill-with-docs` | `skills/engineering/grill-with-docs/` | Preserves composition of `grilling` and `domain-modeling`; adds Project Contract workspace/knowledge authority, controller handoff, and one-question pacing across both methods. |
+| `grilling` | `skills/productivity/grilling/` | Changes whole-frontier rounds to one consequential question per reply; adds no-implementation and controller-return boundaries. |
 | `domain-modeling` | `skills/engineering/domain-modeling/` | Adds workspace/knowledge-write authority and controller-return boundaries. |
 | `to-spec` | `skills/engineering/to-spec/` | Separates the Specification Gate from publication, removes triage labels, and fixes one GitHub parent issue as canonical. |
 | `to-tickets` | `skills/engineering/to-tickets/` | Retains tracer bullets, prefactoring, expand-contract, quiz, and blocking edges; adds a distinct Ticket Breakdown Gate, GitHub sub-issues, and no triage labels. |

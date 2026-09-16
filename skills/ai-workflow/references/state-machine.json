@@ -132,5 +132,20 @@
       "newEvidence": "continue",
       "sameBlockerWithoutNewEvidence": "exception"
     }
+  },
+  "interactionPolicy": {
+    "workflowReply": {
+      "requiredFields": ["stage", "progress", "pendingDecisionOrBlocker", "nextStep"],
+      "nameActiveGate": true,
+      "reportActualStateBeforeTransition": true
+    },
+    "grill": {
+      "maxConsequentialQuestionsPerReply": 1,
+      "showQuestionNumber": true,
+      "showPrerequisite": true,
+      "showKnownQueuedDecisions": true,
+      "recomputeAfterEachAnswer": true,
+      "includeDomainModelingQuestions": true
+    }
   }
 }
