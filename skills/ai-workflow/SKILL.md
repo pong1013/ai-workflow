@@ -23,7 +23,7 @@ Read only the references needed for the current stage:
 ## Preserve one run
 
 - Refuse a second unfinished Feature Run in the same Codex task. Different features belong in different tasks and isolated branches or worktrees when edits may overlap.
-- Keep one run envelope containing repository identity, state, requested stopping point, Project Contract, workspace baseline, GitHub parent and ticket identifiers, approvals, ownership, verification, findings, and checkpoint path.
+- Keep one run envelope containing repository identity, state, requested stopping point, Project Contract, workspace baseline, GitHub parent and ticket identifiers, approvals, ownership, an ordered round ledger, verification, findings, and checkpoint path. Append each ticket implementation/quality round and feature verification/review round; later passes never erase earlier failures or retries.
 - Never treat a filename, tracker label, issue state, branch, or commit message as approval provenance.
 
 ## Show progress in every reply
@@ -38,8 +38,8 @@ Start every `$ai-workflow` user-facing reply with a compact status line naming t
 4. Invoke `$to-spec`. The Specification Gate approves the exact specification and authorizes its publication as one GitHub parent issue. It does not authorize ticket publication, delivery, or unrelated work.
 5. Invoke `$to-tickets`. The Ticket Breakdown Gate approves granularity, blocking edges, merge/split choices, and the exact GitHub sub-issues to publish.
 6. Work one dependency-ready ticket at a time. Dispatch a fresh Implementation Agent and Quality Agent concurrently before awaiting either worker, following [references/quality-loop.md](references/quality-loop.md).
-7. After ticket-level verification and review pass, create one local ticket commit. Then advance to the next dependency-ready ticket.
-8. After all tickets pass, run feature-level verification and a fresh `$code-review` across the complete branch.
+7. After ticket-level verification and review pass, create one local ticket commit. Then advance to the next dependency-ready ticket. Record each attempt before deciding whether it passed, needs an owned fix, or enters Exception.
+8. After all tickets pass, run feature-level verification and a fresh `$code-review` across the complete branch. Record each feature-level round, including retries after findings.
 9. Present the Delivery Gate. Approval enters `delivery-approved` and authorizes only its exact push and pull-request bundle. Enter `complete` only after both operations succeed; otherwise retain the nonterminal failure and enter Exception as needed. Never merge or close issues directly.
 
 ## Invoke independent Skills
@@ -58,8 +58,8 @@ $grill-with-docs -> $to-spec -> $to-tickets -> $implement/$tdd -> $code-review
 
 Honor natural-language stopping points and return current artifacts without pretending the run is complete. On resume, verify repository identity, GitHub artifacts, current diff, branch, ticket relationships, and approval provenance. If current-task approval is unavailable, present a Resume Gate describing scope, entry stage, external effects, automatic worker work, ticket commits, and the separate Delivery Gate.
 
-At an Exception Gate, pause workers and present the stage, blocker, attempts, evidence, options, recommendation, and impact. Ask one consequential decision question. Continue only when the decision supplies the missing authority or evidence. Stop a review loop when the same blocker repeats without new evidence.
+At an Exception Gate, pause workers and present the stage, blocker, attempts, evidence, options, recommendation, and impact. Include the ordered round ledger accumulated so far when the run stops. Ask one consequential decision question. Continue only when the decision supplies the missing authority or evidence. Stop a review loop when the same blocker repeats without new evidence.
 
 ## Finish
 
-Complete only after the approved push and pull-request creation succeed. Report the parent specification, tickets, ticket commits, verification, both review axes, pull request, and accepted limitations. Passing deterministic checks alone never establishes release readiness or external integration success.
+Complete only after the approved push and pull-request creation succeed. Report the parent specification, tickets, ticket commits, the complete ordered round ledger, verification, both review axes, pull request, and accepted limitations. A stopping-point or blocked-run report also includes the ledger accumulated so far. Passing deterministic checks alone never establishes release readiness or external integration success.

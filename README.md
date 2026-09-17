@@ -140,6 +140,8 @@ GitHub stores the canonical parent specification and ticket sub-issues. Ignored 
 
 `$implement` never commits. After each ticket passes independent verification and review, the controller creates one local commit referencing the ticket. Issues stay open throughout local work and pull-request review; closing references take effect only when the pull request merges.
 
+The controller keeps an ordered record of every ticket implementation/quality attempt and every feature verification/review attempt. Each round says what changed (or that nothing changed), which exact checks passed, failed, or were not applicable, the separate Standards and Spec review outcomes, and the next action. Failed rounds remain visible after retries. Stopping-point and final reports include the accumulated record, and the Delivery Gate shows the complete record before approval. Local checkpoints cache it but do not establish approval or substitute for current evidence.
+
 ## Implementation plan
 
 The approved scope, sequence, acceptance criteria, and cross-repository rollout are in [Full Workflow v1 Implementation Plan](docs/plans/full-workflow-v1.md).

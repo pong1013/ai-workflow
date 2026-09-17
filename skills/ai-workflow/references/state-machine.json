@@ -133,6 +133,16 @@
       "sameBlockerWithoutNewEvidence": "exception"
     }
   },
+  "roundLedgerPolicy": {
+    "ordered": true,
+    "scopes": ["ticket", "feature"],
+    "roundRequiredFields": ["sequence", "roundNumber", "scope", "ticket", "implementationChanges", "checks", "standardsReview", "specReview", "nextAction"],
+    "checkRequiredFields": ["command", "outcome"],
+    "outcomes": ["pass", "fail", "not-applicable"],
+    "notApplicableRequiresReason": true,
+    "preserveFailedRounds": true,
+    "reportSurfaces": ["checkpoint", "stopped-run", "delivery-gate", "final"]
+  },
   "interactionPolicy": {
     "workflowReply": {
       "requiredFields": ["stage", "progress", "pendingDecisionOrBlocker", "nextStep"],

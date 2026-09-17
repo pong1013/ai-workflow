@@ -249,6 +249,62 @@ test_state_model_rejects_mutating_review() {
   ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
 }
 
+test_state_model_requires_complete_round_ledger() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["roundLedgerPolicy"]
+assert policy["ordered"] is True
+assert policy["scopes"] == ["ticket", "feature"]
+assert {
+    "sequence", "scope", "ticket", "roundNumber", "implementationChanges", "checks",
+    "standardsReview", "specReview", "nextAction",
+} <= set(policy["roundRequiredFields"])
+assert {"command", "outcome"} <= set(policy["checkRequiredFields"])
+assert set(policy["outcomes"]) == {"pass", "fail", "not-applicable"}
+assert policy["notApplicableRequiresReason"] is True
+assert policy["preserveFailedRounds"] is True
+assert {"checkpoint", "stopped-run", "delivery-gate", "final"} <= set(policy["reportSurfaces"])
+PY
+}
+
+test_state_model_rejects_dropped_failed_rounds() {
+  local fixture="${TEST_TEMP_ROOT}/dropped-failed-rounds.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["roundLedgerPolicy"]["preserveFailedRounds"] = False'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_missing_feature_rounds() {
+  local fixture="${TEST_TEMP_ROOT}/missing-feature-rounds.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["roundLedgerPolicy"]["scopes"] = ["ticket"]'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_missing_round_number() {
+  local fixture="${TEST_TEMP_ROOT}/missing-round-number.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["roundLedgerPolicy"]["roundRequiredFields"].remove("roundNumber")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_missing_delivery_ledger() {
+  local fixture="${TEST_TEMP_ROOT}/missing-delivery-ledger.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["roundLedgerPolicy"]["reportSurfaces"].remove("delivery-gate")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_unexplained_not_applicable() {
+  local fixture="${TEST_TEMP_ROOT}/unexplained-not-applicable.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["roundLedgerPolicy"]["notApplicableRequiresReason"] = False'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
 test_state_model_rejects_wrong_stage_skill() {
   local fixture="${TEST_TEMP_ROOT}/wrong-stage.json"
   mutate_json "${STATE_MODEL}" "${fixture}" \
@@ -825,6 +881,12 @@ run_test "state model rejects an unsafe overlap fallback" test_state_model_rejec
 run_test "state model rejects an unbounded review loop" test_state_model_rejects_unbounded_review_loop
 run_test "state model rejects an incorrect finding route" test_state_model_rejects_wrong_finding_route
 run_test "state model rejects a mutating review policy" test_state_model_rejects_mutating_review
+run_test "state model requires a complete ordered round ledger" test_state_model_requires_complete_round_ledger
+run_test "state model preserves failed rounds after retry" test_state_model_rejects_dropped_failed_rounds
+run_test "state model includes feature-level rounds" test_state_model_rejects_missing_feature_rounds
+run_test "state model requires an explicit round number" test_state_model_rejects_missing_round_number
+run_test "state model includes the ledger at Delivery Gate" test_state_model_rejects_missing_delivery_ledger
+run_test "state model requires reasons for inapplicable checks" test_state_model_rejects_unexplained_not_applicable
 run_test "state model rejects a substituted stage Skill" test_state_model_rejects_wrong_stage_skill
 run_test "state model requires reply progress and one Grill question" test_state_model_requires_reply_progress_and_one_grill_question
 run_test "state model rejects batched Grill questions" test_state_model_rejects_batched_grill_questions

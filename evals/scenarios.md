@@ -151,3 +151,15 @@ Expected: each Grill reply asks exactly one consequential decision question, whe
 Prompt sequence: invoke `$grilling` independently, then invoke `$grill-with-docs` independently in a separate fresh task.
 
 Expected: `$grilling` conducts the decision-tree interview without pretending to own domain-document writes. `$grill-with-docs` loads `$grilling` and `$domain-modeling`, explains their composition when relevant, and records only qualifying settled repository knowledge. Both remain independently invokable.
+
+## 26. Failed ticket round, retry, and stopped-run report
+
+Fixture: a ticket's first Implementation/Quality round changes a file and runs a named focused check that fails; Standards passes and Spec finds a product defect. The routed retry fixes the defect and its checks and both review axes pass. Stop the run after the retry, before Delivery.
+
+Expected: the checkpoint retains both ticket rounds in order with distinct round numbers and ticket identity. Each round states the implementation changes or "no change", exact check command and pass/fail/not-applicable result, Standards and Spec outcomes, and next action. Any not-applicable check has a reason. The stopped-run report shows the failed first round and the successful retry, including the first failure and finding; it does not replace the first round with the latest result. The checkpoint does not authorize a transition or restore a Gate approval.
+
+## 27. Feature-level rounds in Delivery Gate and final report
+
+Fixture: resume the run from scenario 26 with current-task approval where needed. All tickets pass and commit. The first feature-level verification round runs a named complete check that fails, records no implementation change, and routes a correction to ticket work. The next feature-level round runs complete checks and fresh Standards/Spec review from the Feature Run baseline, all passing. Present the Delivery Gate, then complete delivery in a disposable approved remote.
+
+Expected: feature-level rounds use feature scope and distinct round numbers, record exact checks and outcomes, both review axes, implementation changes or "no change", and the next action. The Delivery Gate evidence and final report include the complete ordered ledger: both ticket rounds from scenario 26 and both feature rounds, including the failed checks and retries. The Delivery Gate still requires explicit approval, and success still requires both push and pull-request creation.
