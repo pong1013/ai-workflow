@@ -146,6 +146,41 @@ EXPECTED_QUALITY_POLICY = {
         "sameBlockerWithoutNewEvidence": "exception",
     },
 }
+EXPECTED_ROUND_LEDGER_POLICY = {
+    "ordered": True,
+    "scopes": ["ticket", "feature"],
+    "roundRequiredFields": [
+        "sequence",
+        "roundNumber",
+        "scope",
+        "ticket",
+        "implementationChanges",
+        "checks",
+        "standardsReview",
+        "specReview",
+        "nextAction",
+    ],
+    "checkRequiredFields": ["command", "outcome"],
+    "outcomes": ["pass", "fail", "not-applicable"],
+    "notApplicableRequiresReason": True,
+    "preserveFailedRounds": True,
+    "reportSurfaces": ["checkpoint", "stopped-run", "delivery-gate", "final"],
+}
+EXPECTED_INTERACTION_POLICY = {
+    "workflowReply": {
+        "requiredFields": ["stage", "progress", "pendingDecisionOrBlocker", "nextStep"],
+        "nameActiveGate": True,
+        "reportActualStateBeforeTransition": True,
+    },
+    "grill": {
+        "maxConsequentialQuestionsPerReply": 1,
+        "showQuestionNumber": True,
+        "showPrerequisite": True,
+        "showKnownQueuedDecisions": True,
+        "recomputeAfterEachAnswer": True,
+        "includeDomainModelingQuestions": True,
+    },
+}
 
 
 def main() -> None:
@@ -218,6 +253,10 @@ def main() -> None:
 
     if model.get("qualityPolicy") != EXPECTED_QUALITY_POLICY:
         errors.append("quality policy differs from the v1 contract")
+    if model.get("roundLedgerPolicy") != EXPECTED_ROUND_LEDGER_POLICY:
+        errors.append("round ledger policy differs from the workflow contract")
+    if model.get("interactionPolicy") != EXPECTED_INTERACTION_POLICY:
+        errors.append("interaction policy differs from the workflow contract")
 
     authorities = {}
     for item in model.get("authorities", []):

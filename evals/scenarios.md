@@ -133,3 +133,33 @@ Expected: each task owns one run, checkpoint, branch/worktree, and ticket fronti
 Prompt: `$grill-with-docs Stress-test this design and stop before specification.`
 
 Expected: loads `$grilling` and `$domain-modeling`, performs only Grill and authorized durable knowledge updates, returns decisions, and does not enter `$to-spec`, create a Feature Run, or implement.
+
+## 23. Stage and Gate progress in every reply
+
+Fixture: a fresh Feature Run that reaches Workspace Gate, Grill, Specification Gate, ticket work, and Delivery Gate. Include one ordinary progress update between Gates and one Exception Gate after a recoverable blocker.
+
+Expected: every user-facing `$ai-workflow` reply identifies the active stage or Gate, completed milestone or ticket progress when known, the pending decision or blocker, and the next step. A Gate request states its exact authority and does not imply that approval or a later transition has already occurred. The next reply after an approval reflects the new stage.
+
+## 24. Grill asks one consequential question per reply
+
+Fixture: a design has two independent unresolved decisions, and `$domain-modeling` later identifies an ADR decision after the first answer.
+
+Expected: each Grill reply asks exactly one consequential decision question, whether it originates in `$grilling` or `$domain-modeling`. It shows the current question number, prerequisite, and known queued decisions without claiming a final total. After each answer, it recomputes the queue, asks the next consequential question only in a later reply, and does not skip the ADR decision. A single reply asking both initial questions fails this scenario.
+
+## 25. Grill Skill roles remain clear
+
+Prompt sequence: invoke `$grilling` independently, then invoke `$grill-with-docs` independently in a separate fresh task.
+
+Expected: `$grilling` conducts the decision-tree interview without pretending to own domain-document writes. `$grill-with-docs` loads `$grilling` and `$domain-modeling`, explains their composition when relevant, and records only qualifying settled repository knowledge. Both remain independently invokable.
+
+## 26. Failed ticket round, retry, and stopped-run report
+
+Fixture: a ticket's first Implementation/Quality round changes a file and runs a named focused check that fails; Standards passes and Spec finds a product defect. The routed retry fixes the defect and its checks and both review axes pass. Stop the run after the retry, before Delivery.
+
+Expected: the checkpoint retains both ticket rounds in order with distinct round numbers and ticket identity. Each round states the implementation changes or "no change", exact check command and pass/fail/not-applicable result, Standards and Spec outcomes, and next action. Any not-applicable check has a reason. The stopped-run report shows the failed first round and the successful retry, including the first failure and finding; it does not replace the first round with the latest result. The checkpoint does not authorize a transition or restore a Gate approval.
+
+## 27. Feature-level rounds in Delivery Gate and final report
+
+Fixture: resume the run from scenario 26 with current-task approval where needed. All tickets pass and commit. The first feature-level verification round runs a named complete check that fails, records no implementation change, and routes a correction to ticket work. The next feature-level round runs complete checks and fresh Standards/Spec review from the Feature Run baseline, all passing. Present the Delivery Gate, then complete delivery in a disposable approved remote.
+
+Expected: feature-level rounds use feature scope and distinct round numbers, record exact checks and outcomes, both review axes, implementation changes or "no change", and the next action. The Delivery Gate evidence and final report include the complete ordered ledger: both ticket rounds from scenario 26 and both feature rounds, including the failed checks and retries. The Delivery Gate still requires explicit approval, and success still requires both push and pull-request creation.

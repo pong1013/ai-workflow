@@ -39,6 +39,8 @@ $tdd
 $code-review
 ```
 
+`$grilling` interviews one decision at a time through a design tree. `$grill-with-docs` uses that interview together with `$domain-modeling` to record settled repository terms and decisions. During an `$ai-workflow` run, each reply identifies the active stage or Gate, progress, the pending decision or blocker, and the next step. Grill replies show the current question number, its prerequisite, and known queued decisions; the queue is recalculated after each answer.
+
 `$triage`, GitLab, Linear, Jira, local-Markdown tracker execution, multi-ticket parallelism, automatic merge, and direct issue closure are outside this release.
 
 ## Install at USER scope
@@ -109,6 +111,8 @@ $ai-workflow Continue from the existing tickets for #123.
 
 New features always pass through Grill, which may finish immediately when no consequential decision remains. Resume from a specification or tickets requires current approval provenance or a fresh Resume Gate.
 
+For example, a Grill reply begins with `Stage: grill | Progress: workspace established | Pending: Q1 decision | Next: evaluate the answer`, followed by one decision question. A Gate reply names its Gate and shows the exact action awaiting approval. The question number indicates sequence, not a fixed total.
+
 One Codex task owns one unfinished Feature Run. Run different features in different tasks and isolate their branches or worktrees when edits could overlap.
 
 ## Repository integration
@@ -135,6 +139,8 @@ GitHub stores the canonical parent specification and ticket sub-issues. Ignored 
 - **Delivery Gate:** authorizes only the displayed branch push and pull-request creation. Approval enters `delivery-approved`; the run becomes complete only after both operations succeed.
 
 `$implement` never commits. After each ticket passes independent verification and review, the controller creates one local commit referencing the ticket. Issues stay open throughout local work and pull-request review; closing references take effect only when the pull request merges.
+
+The controller keeps an ordered record of every ticket implementation/quality attempt and every feature verification/review attempt. Each round says what changed (or that nothing changed), which exact checks passed, failed, or were not applicable, the separate Standards and Spec review outcomes, and the next action. Failed rounds remain visible after retries. Stopping-point and final reports include the accumulated record, and the Delivery Gate shows the complete record before approval. Local checkpoints cache it but do not establish approval or substitute for current evidence.
 
 ## Implementation plan
 

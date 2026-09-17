@@ -5,7 +5,7 @@ description: Stress-test a plan through $grilling while $domain-modeling records
 
 # Grill with Docs
 
-Load and apply both [$grilling](../grilling/SKILL.md) and [$domain-modeling](../domain-modeling/SKILL.md). `$grilling` owns the design-tree interview; `$domain-modeling` challenges terminology and records only knowledge that actually settles.
+Load and apply both [$grilling](../grilling/SKILL.md) and [$domain-modeling](../domain-modeling/SKILL.md). `$grilling` is independently invokable for a design-tree interview. This Skill composes that interview with `$domain-modeling`, which challenges terminology and records only knowledge that actually settles. Domain terminology or ADR choices count as consequential Grill decisions: include them in the same frontier and ask at most one decision question in each user-facing reply. Do not append a second domain question to a Grill question.
 
 Inspect the repository, configured domain docs, relevant code, `CONTEXT.md` or `CONTEXT-MAP.md`, and applicable ADRs before asking questions. Facts are the agent's job; decisions are the user's.
 
