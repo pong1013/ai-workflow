@@ -426,6 +426,18 @@ test_github_only_publication_contract() {
     ! grep -Fq 'ready-for-agent' "${ROOT_DIR}/skills/to-tickets/SKILL.md"
 }
 
+test_github_tracker_frontier_uses_current_run_completion() {
+  local required='The ready frontier contains open child tickets whose blockers are all complete in the current run.'
+  local forbidden='The ready frontier contains open child tickets with no open blockers.'
+  local tracker
+  for tracker in \
+    "${ROOT_DIR}/skills/setup-matt-pocock-skills/issue-tracker-github.md" \
+    "${ROOT_DIR}/docs/agents/issue-tracker.md"; do
+    grep -Fq "${required}" "${tracker}" || return
+    ! grep -Fq "${forbidden}" "${tracker}" || return
+  done
+}
+
 test_readme_installs_complete_staged_set() {
   local skill
   grep -Fq 'temporary' "${ROOT_DIR}/README.md" || return
@@ -901,6 +913,7 @@ run_test "setup package contains no triage behavior" test_no_triage_payload
 run_test "non-GitHub seeds contain no bundled workflow operations" test_non_github_seeds_have_no_workflow_operations
 run_test "adapted implement never commits" test_implement_does_not_commit
 run_test "GitHub specification and ticket gates are wired" test_github_only_publication_contract
+run_test "GitHub tracker frontier uses current-run blocker completion" test_github_tracker_frontier_uses_current_run_completion
 run_test "README installs the complete staged Skill set" test_readme_installs_complete_staged_set
 run_test "valid repository setup passes" test_valid_setup_output
 run_test "setup routes AGENTS and CLAUDE instruction files" test_setup_routes_instruction_files
