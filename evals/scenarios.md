@@ -48,7 +48,7 @@ Expected: `$to-spec` synthesizes rather than re-interviews, includes agreed seam
 
 Fixture: an approved parent specification containing prefactoring and three dependent tracer bullets.
 
-Expected: `$to-tickets` presents granularity and blocking edges, waits for explicit approval, creates blockers first, links every issue as a sub-issue, prefers native dependencies, records any body fallback, and neither closes nor modifies the parent beyond approved relationships.
+Expected: `$to-tickets` presents granularity and blocking edges, waits for explicit approval, creates blockers first, links every issue as a sub-issue, prefers native dependencies, records any body fallback, and neither closes nor modifies the parent beyond approved relationships. After a blocker ticket passes ticket-level verification and review and receives its local ticket commit, its dependent ticket enters the ready frontier even though the blocker issue remains open; the controller does not wait for final pull-request merge.
 
 ## 9. Architecture gap during ticketing
 
