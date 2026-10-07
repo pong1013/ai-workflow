@@ -10,12 +10,16 @@ import hmac
 import json
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
 
 START = "<!-- ai-workflow:agent-skills:start -->"
 END = "<!-- ai-workflow:agent-skills:end -->"
+RECEIPT_PATH = Path(".agents/setup/receipt.json")
+RECEIPT_SCHEMA_VERSION = 1
+RECEIPT_IGNORE_RULE = ".agents/setup/"
 REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 TRACKER_REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+$")
 REMOTE_NAME = re.compile(r"^[A-Za-z0-9._/-]+$")
@@ -153,6 +157,76 @@ def update_instruction(original: str, block: str, name: str) -> str:
     return f"{prefix}\n\n{block}\n" if prefix else f"{block}\n"
 
 
+def receipt_ignore_context(root: Path) -> list[dict[str, object]]:
+    context = []
+    for relative in (Path(".agents/.gitignore"), Path(".agents/setup/.gitignore")):
+        path = root / relative
+        if any((root / Path(*relative.parts[:index])).is_symlink() for index in range(1, len(relative.parts) + 1)):
+            raise SetupError(f"receipt ignore context traverses a symlink: {relative}")
+        existed = path.exists()
+        content = path.read_text(encoding="utf-8") if existed else ""
+        context.append(
+            {
+                "path": relative.as_posix(),
+                "existed": existed,
+                "hash": sha256_text(content),
+            }
+        )
+    return context
+
+
+def gitignore_ignores_receipt(content: str, root: Path) -> bool:
+    with tempfile.TemporaryDirectory(prefix="ai-workflow-ignore-") as temporary:
+        probe = Path(temporary)
+        initialized = subprocess.run(
+            ["git", "-c", "core.excludesFile=/dev/null", "-C", str(probe), "init", "-q"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if initialized.returncode != 0:
+            raise SetupError("cannot initialize isolated Git ignore validation")
+        (probe / ".gitignore").write_text(content, encoding="utf-8")
+        for record in receipt_ignore_context(root):
+            if not record["existed"]:
+                continue
+            source = root / record["path"]
+            target = probe / record["path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+        receipt_probe = probe / RECEIPT_PATH
+        receipt_probe.parent.mkdir(parents=True, exist_ok=True)
+        receipt_probe.write_text("setup receipt probe\n", encoding="utf-8")
+        ignored = subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.excludesFile=/dev/null",
+                "-C",
+                str(probe),
+                "check-ignore",
+                "-q",
+                "--no-index",
+                "--",
+                RECEIPT_PATH.as_posix(),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return ignored.returncode == 0
+
+
+def update_gitignore(original: str, root: Path) -> str:
+    if gitignore_ignores_receipt(original, root):
+        return original
+    prefix = original if not original or original.endswith("\n") else original + "\n"
+    proposed = f"{prefix}{RECEIPT_IGNORE_RULE}\n"
+    if not gitignore_ignores_receipt(proposed, root):
+        raise SetupError("cannot make .agents/setup/ effectively ignored with the proposed .gitignore")
+    return proposed
+
+
 def render_tracker(template: str, repository: str, remote_name: str) -> str:
     return (
         template.replace("<confirmed-owner>/<confirmed-repository>", repository)
@@ -208,6 +282,12 @@ def changes_for(args: argparse.Namespace) -> tuple[dict[Path, str], tuple[str, .
     domain_template = (skill_root / "domain.md").read_text(encoding="utf-8")
     block = managed_block(tracker_name, tracker_summary, args.domain_layout)
     changes = {
+        root / ".gitignore": update_gitignore(
+            (root / ".gitignore").read_text(encoding="utf-8")
+            if (root / ".gitignore").exists()
+            else "",
+            root,
+        ),
         root / "docs/agents/issue-tracker.md": render_tracker(
             tracker_template, tracker_repository, args.remote_name
         ),
@@ -229,8 +309,30 @@ def setup_plan_token(
     existed: dict[Path, bool],
     remote_urls: tuple[str, ...],
 ) -> str:
+    payload = setup_plan_payload(args, changes, before, existed, remote_urls)
+    digest = hashlib.sha256(
+        canonical_json(payload).encode("utf-8")
+    ).hexdigest()
+    return f"sha256:{digest}"
+
+
+def canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def sha256_text(value: str) -> str:
+    return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
+
+
+def setup_plan_payload(
+    args: argparse.Namespace,
+    changes: dict[Path, str],
+    before: dict[Path, str],
+    existed: dict[Path, bool],
+    remote_urls: tuple[str, ...],
+) -> dict[str, object]:
     root = args.repository_root.resolve()
-    payload = {
+    return {
         "repositoryRoot": str(root),
         "tracker": args.tracker,
         "githubRepository": args.github_repository,
@@ -239,6 +341,7 @@ def setup_plan_token(
         "remoteUrls": list(remote_urls),
         "domainLayout": args.domain_layout,
         "instructionFile": args.instruction_file,
+        "receiptIgnoreContext": receipt_ignore_context(root),
         "files": [
             {
                 "path": str(path.relative_to(root)),
@@ -249,10 +352,106 @@ def setup_plan_token(
             for path in sorted(changes, key=lambda item: str(item.relative_to(root)))
         ],
     }
-    digest = hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    return f"sha256:{digest}"
+
+
+def changed_hunks(before: str, after: str) -> list[dict[str, object]]:
+    before_lines = before.splitlines(keepends=True)
+    after_lines = after.splitlines(keepends=True)
+    matcher = difflib.SequenceMatcher(None, before_lines, after_lines, autojunk=False)
+    hunks: list[dict[str, object]] = []
+    for index, group in enumerate(matcher.get_grouped_opcodes(n=3), start=1):
+        first = group[0]
+        last = group[-1]
+        before_start, before_end = first[1], last[2]
+        after_start, after_end = first[3], last[4]
+        hunks.append(
+            {
+                "index": index,
+                "before": {
+                    "startLine": before_start + 1,
+                    "lineCount": before_end - before_start,
+                    "hash": sha256_text("".join(before_lines[before_start:before_end])),
+                },
+                "after": {
+                    "startLine": after_start + 1,
+                    "lineCount": after_end - after_start,
+                    "hash": sha256_text("".join(after_lines[after_start:after_end])),
+                },
+            }
+        )
+    return hunks
+
+
+def receipt_scope(relative: Path) -> str:
+    if relative.parts[:2] == ("docs", "agents"):
+        return "complete-file"
+    if relative == Path(".gitignore"):
+        return "ignore-rule"
+    return "managed-block"
+
+
+def repository_identity(
+    args: argparse.Namespace, remote_urls: tuple[str, ...]
+) -> dict[str, object]:
+    identities: set[str]
+    if args.tracker == "github":
+        identities = {github_repository(url) for url in remote_urls}
+    elif args.tracker == "gitlab":
+        identities = {remote_repository_path(url) for url in remote_urls}
+    else:
+        identities = {".scratch/"}
+    return {
+        "root": str(args.repository_root.resolve()),
+        "tracker": args.tracker,
+        "trackerRepository": next(iter(identities)),
+        "remoteName": args.remote_name,
+    }
+
+
+def write_setup_receipt(
+    args: argparse.Namespace,
+    changed: list[tuple[Path, str, str]],
+    existed: dict[Path, bool],
+    remote_urls: tuple[str, ...],
+    plan_token: str,
+) -> Path:
+    root = args.repository_root.resolve()
+    receipt_path = root / RECEIPT_PATH
+    ensure_safe_target(root, receipt_path)
+    mutations = []
+    for path, before, after in sorted(changed, key=lambda item: str(item[0].relative_to(root))):
+        relative = path.relative_to(root)
+        mutations.append(
+            {
+                "path": relative.as_posix(),
+                "scope": receipt_scope(relative),
+                "existed": existed[path],
+                "beforeHash": sha256_text(before),
+                "afterHash": sha256_text(after),
+                "hunks": changed_hunks(before, after),
+                "provenance": "setup/configuration",
+            }
+        )
+    receipt: dict[str, object] = {
+        "schemaVersion": RECEIPT_SCHEMA_VERSION,
+        "repository": repository_identity(args, remote_urls),
+        "approvedPlan": {
+            "token": plan_token,
+            "tracker": args.tracker,
+            "githubRepository": args.github_repository,
+            "trackerRepository": args.tracker_repository,
+            "remoteName": args.remote_name,
+            "domainLayout": args.domain_layout,
+            "instructionFile": args.instruction_file,
+        },
+        "planToken": plan_token,
+        "mutations": mutations,
+        "approvalAuthority": False,
+    }
+    receipt["checksum"] = sha256_text(canonical_json(receipt))
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return receipt_path
 
 
 def print_diff(path: Path, before: str, after: str, root: Path) -> None:
@@ -327,11 +526,18 @@ def main() -> None:
         current = path.read_text(encoding="utf-8") if current_exists else ""
         if current_exists != existed[path] or current != original:
             raise SystemExit(f"{path.relative_to(root)} changed after preview; preview again")
+    if not gitignore_ignores_receipt(changes[root / ".gitignore"], root):
+        raise SystemExit(
+            "refusing to apply because the approved .gitignore does not ignore "
+            ".agents/setup/receipt.json"
+        )
     for path, _, after in changed:
         ensure_safe_target(root, path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(after, encoding="utf-8")
+    receipt_path = write_setup_receipt(args, changed, existed, remote_urls, plan_token)
     print(f"Applied {len(changed)} setup file(s).")
+    print(f"Setup receipt: {receipt_path.relative_to(root)}")
 
 
 if __name__ == "__main__":

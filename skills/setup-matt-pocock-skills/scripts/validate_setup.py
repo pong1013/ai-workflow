@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from configure_repository import (
+    RECEIPT_IGNORE_RULE,
     SetupError,
     git_remote_urls,
     github_repository,
@@ -73,6 +74,7 @@ def main() -> None:
     errors: list[str] = []
     tracker_path = root / "docs" / "agents" / "issue-tracker.md"
     domain_path = root / "docs" / "agents" / "domain.md"
+    gitignore_path = root / ".gitignore"
 
     try:
         tracker_text = tracker_path.read_text(encoding="utf-8")
@@ -84,6 +86,13 @@ def main() -> None:
     except OSError as error:
         errors.append(f"cannot read docs/agents/domain.md: {error}")
         domain_text = ""
+    try:
+        gitignore_text = gitignore_path.read_text(encoding="utf-8")
+    except OSError as error:
+        errors.append(f"cannot read .gitignore: {error}")
+        gitignore_text = ""
+    if RECEIPT_IGNORE_RULE not in {line.strip() for line in gitignore_text.splitlines()}:
+        errors.append(".gitignore must ignore .agents/setup/")
 
     tracker_match = TRACKER.search(tracker_text)
     tracker_name = tracker_match.group(1).strip() if tracker_match else ""

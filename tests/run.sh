@@ -7,6 +7,7 @@ CONTROLLER_DIR="${ROOT_DIR}/skills/ai-workflow"
 STATE_MODEL="${CONTROLLER_DIR}/references/state-machine.json"
 SETUP_VALIDATOR="${ROOT_DIR}/skills/setup-matt-pocock-skills/scripts/validate_setup.py"
 SETUP_CONFIGURATOR="${ROOT_DIR}/skills/setup-matt-pocock-skills/scripts/configure_repository.py"
+SETUP_RECEIPT_VALIDATOR="${ROOT_DIR}/skills/setup-matt-pocock-skills/scripts/validate_setup_receipt.py"
 UPSTREAM_COMMIT="3cca18b368ae95cdbdebbff572ccafa662551015"
 EXPECTED_SKILLS=(
   ai-workflow
@@ -452,6 +453,7 @@ test_readme_installs_complete_staged_set() {
 write_valid_setup_fixture() {
   local fixture="$1"
   mkdir -p "${fixture}/docs/agents"
+  cp "${ROOT_DIR}/.gitignore" "${fixture}/.gitignore"
   cp "${ROOT_DIR}/docs/agents/issue-tracker.md" "${fixture}/docs/agents/issue-tracker.md"
   cp "${ROOT_DIR}/docs/agents/domain.md" "${fixture}/docs/agents/domain.md"
   cp "${ROOT_DIR}/AGENTS.md" "${fixture}/AGENTS.md"
@@ -493,6 +495,16 @@ apply_setup_configurator() {
     --apply --confirmed --plan-token "${token}"
 }
 
+git_local_exclude_path() {
+  local fixture="$1" path
+  path="$(git -C "${fixture}" rev-parse --git-path info/exclude)" || return
+  if [[ "${path}" == /* ]]; then
+    printf '%s\n' "${path}"
+  else
+    printf '%s\n' "${fixture}/${path}"
+  fi
+}
+
 test_setup_routes_instruction_files() {
   local fixture kind
   for kind in agents claude both; do
@@ -525,6 +537,100 @@ test_setup_requires_confirmation_and_previews() {
   [[ ! -e "${fixture}/docs/agents/issue-tracker.md" ]]
 }
 
+test_setup_previews_and_applies_tracked_receipt_ignore_rule() {
+  local fixture="${TEST_TEMP_ROOT}/setup-preview-ignore-rule"
+  local output token exclude_path exclude_before exclude_after
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  printf '%s\n' 'user-owned.log' >"${fixture}/.gitignore"
+
+  output="$(run_setup_configurator "${fixture}")" || return
+  grep -Fq -- '--- a/.gitignore' <<<"${output}" || return
+  grep -Fq -- '+.agents/setup/' <<<"${output}" || return
+  token="$(sed -n 's/^Setup plan token: //p' <<<"${output}")"
+  [[ "${token}" == sha256:* ]] || return
+  exclude_path="$(git_local_exclude_path "${fixture}")" || return
+  exclude_before="$(shasum -a 256 "${exclude_path}")" || return
+
+  run_setup_configurator "${fixture}" \
+    --apply --confirmed --plan-token "${token}" >/dev/null || return
+  exclude_after="$(shasum -a 256 "${exclude_path}")" || return
+  grep -Fxq 'user-owned.log' "${fixture}/.gitignore" || return
+  grep -Fxq '.agents/setup/' "${fixture}/.gitignore" || return
+  git -C "${fixture}" check-ignore -q .agents/setup/receipt.json || return
+  [[ -f "${fixture}/.agents/setup/receipt.json" ]] || return
+  [[ "${exclude_before}" == "${exclude_after}" ]] || return
+  python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null
+}
+
+test_setup_token_rejects_receipt_ignore_target_drift() {
+  local fixture="${TEST_TEMP_ROOT}/setup-ignore-target-drift"
+  local token exclude_path exclude_before exclude_after
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  printf '%s\n' 'user-owned.log' >"${fixture}/.gitignore"
+  token="$(setup_plan_token "${fixture}")" || return
+  [[ "${token}" == sha256:* ]] || return
+  exclude_path="$(git_local_exclude_path "${fixture}")" || return
+  exclude_before="$(shasum -a 256 "${exclude_path}")" || return
+
+  printf '%s\n' 'added-after-preview.tmp' >>"${fixture}/.gitignore"
+  ! run_setup_configurator "${fixture}" \
+    --apply --confirmed --plan-token "${token}" >/dev/null 2>&1 || return
+  exclude_after="$(shasum -a 256 "${exclude_path}")" || return
+  grep -Fxq 'added-after-preview.tmp' "${fixture}/.gitignore" || return
+  [[ ! -e "${fixture}/.agents/setup/receipt.json" ]] || return
+  [[ ! -e "${fixture}/docs/agents/issue-tracker.md" ]] || return
+  [[ "${exclude_before}" == "${exclude_after}" ]]
+}
+
+test_setup_repairs_effective_receipt_ignore_negation() {
+  local fixture="${TEST_TEMP_ROOT}/setup-ignore-negation" output token
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  printf '%s\n' '.agents/setup/' '!.agents/setup/' >"${fixture}/.gitignore"
+
+  output="$(run_setup_configurator "${fixture}")" || return
+  grep -Fq -- '--- a/.gitignore' <<<"${output}" || return
+  grep -Fq -- '+.agents/setup/' <<<"${output}" || return
+  token="$(sed -n 's/^Setup plan token: //p' <<<"${output}")"
+  [[ "${token}" == sha256:* ]] || return
+  [[ ! -e "${fixture}/docs/agents/issue-tracker.md" ]] || return
+
+  run_setup_configurator "${fixture}" \
+    --apply --confirmed --plan-token "${token}" >/dev/null || return
+  [[ "$(tail -n 3 "${fixture}/.gitignore")" == $'.agents/setup/\n!.agents/setup/\n.agents/setup/' ]] || return
+  git -C "${fixture}" check-ignore -q .agents/setup/receipt.json || return
+  [[ -f "${fixture}/.agents/setup/receipt.json" ]] || return
+  python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null
+}
+
+test_setup_rejects_ineffective_proposed_ignore_before_writes() {
+  local fixture="${TEST_TEMP_ROOT}/setup-ineffective-ignore" output
+  local agents_before gitignore_before nested_before
+  mkdir -p "${fixture}/.agents"
+  git -C "${fixture}" init -q
+  git -C "${fixture}" remote add origin git@github.com:pong1013/example.git
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  printf '%s\n' 'user-owned.log' >"${fixture}/.gitignore"
+  printf '%s\n' '!setup/' >"${fixture}/.agents/.gitignore"
+  agents_before="$(shasum -a 256 "${fixture}/AGENTS.md")" || return
+  gitignore_before="$(shasum -a 256 "${fixture}/.gitignore")" || return
+  nested_before="$(shasum -a 256 "${fixture}/.agents/.gitignore")" || return
+
+  if output="$(python3 "${SETUP_CONFIGURATOR}" "${fixture}" \
+    --github-repository pong1013/example --remote-name origin 2>&1)"; then
+    return 1
+  fi
+  grep -Fqi 'ignore' <<<"${output}" || return
+  [[ "$(shasum -a 256 "${fixture}/AGENTS.md")" == "${agents_before}" ]] || return
+  [[ "$(shasum -a 256 "${fixture}/.gitignore")" == "${gitignore_before}" ]] || return
+  [[ "$(shasum -a 256 "${fixture}/.agents/.gitignore")" == "${nested_before}" ]] || return
+  [[ ! -e "${fixture}/docs/agents/issue-tracker.md" ]] || return
+  [[ ! -e "${fixture}/docs/agents/domain.md" ]] || return
+  [[ ! -e "${fixture}/.agents/setup/receipt.json" ]]
+}
+
 test_setup_apply_is_idempotent() {
   local fixture="${TEST_TEMP_ROOT}/setup-idempotent" output
   mkdir -p "${fixture}"
@@ -532,6 +638,157 @@ test_setup_apply_is_idempotent() {
   apply_setup_configurator "${fixture}" >/dev/null || return
   output="$(run_setup_configurator "${fixture}" --apply --confirmed)" || return
   [[ "${output}" == "No changes." ]]
+}
+
+test_setup_apply_writes_ignored_cross_task_receipt() {
+  local fixture="${TEST_TEMP_ROOT}/setup-receipt" receipt output
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  receipt="${fixture}/.agents/setup/receipt.json"
+  [[ -f "${receipt}" ]] || return
+  git -C "${fixture}" check-ignore -q .agents/setup/receipt.json || return
+  output="$(python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}")" || return
+  [[ "${output}" == 'Setup receipt validation passed ('*' mutation(s))' ]] || return
+  python3 - "${receipt}" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert payload["approvalAuthority"] is False
+assert payload["planToken"].startswith("sha256:")
+mutations = payload["mutations"]
+assert mutations
+assert all(item["provenance"] == "setup/configuration" for item in mutations)
+assert all(item["beforeHash"].startswith("sha256:") for item in mutations)
+assert all(item["afterHash"].startswith("sha256:") for item in mutations)
+assert all(item["hunks"] for item in mutations)
+for key in ("password", "credential", "accessToken", "authToken", "secret"):
+    assert key not in payload
+PY
+}
+
+test_setup_noop_does_not_replace_receipt() {
+  local fixture="${TEST_TEMP_ROOT}/setup-noop-receipt" receipt before after output
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  receipt="${fixture}/.agents/setup/receipt.json"
+  before="$(shasum -a 256 "${receipt}")" || return
+  output="$(run_setup_configurator "${fixture}" --apply --confirmed)" || return
+  after="$(shasum -a 256 "${receipt}")" || return
+  [[ "${output}" == "No changes." ]] && [[ "${before}" == "${after}" ]]
+}
+
+test_setup_receipt_rejects_live_content_drift() {
+  local fixture="${TEST_TEMP_ROOT}/setup-receipt-content-drift"
+  [[ -f "${SETUP_RECEIPT_VALIDATOR}" ]] || return
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  printf '%s\n' '# Drift after setup' >>"${fixture}/docs/agents/domain.md"
+  ! python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null 2>&1
+}
+
+test_setup_incremental_receipt_validates_changed_subset() {
+  local fixture="${TEST_TEMP_ROOT}/setup-incremental-receipt" receipt output
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+
+  printf '%s\n' '# Local drift repaired by setup' >>"${fixture}/docs/agents/domain.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  receipt="${fixture}/.agents/setup/receipt.json"
+  output="$(python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}")" || return
+  [[ "${output}" == 'Setup receipt validation passed (1 mutation(s))' ]] || return
+  python3 - "${receipt}" <<'PY'
+import json
+import pathlib
+import sys
+
+payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert [item["path"] for item in payload["mutations"]] == ["docs/agents/domain.md"]
+PY
+}
+
+test_setup_receipt_rejects_remote_and_plan_drift() {
+  local fixture="${TEST_TEMP_ROOT}/setup-receipt-identity-drift"
+  [[ -f "${SETUP_RECEIPT_VALIDATOR}" ]] || return
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  ! python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" \
+    --plan-token sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    >/dev/null 2>&1 || return
+  git -C "${fixture}" remote set-url origin git@github.com:pong1013/different.git
+  ! python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null 2>&1
+}
+
+test_setup_receipt_rejects_non_self_consistent_corruption() {
+  local fixture="${TEST_TEMP_ROOT}/setup-receipt-tampering" receipt
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  receipt="${fixture}/.agents/setup/receipt.json"
+  [[ -f "${SETUP_RECEIPT_VALIDATOR}" && -f "${receipt}" ]] || return
+  python3 - "${receipt}" <<'PY'
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+payload["mutations"][0]["afterHash"] = "sha256:" + "0" * 64
+path.write_text(json.dumps(payload), encoding="utf-8")
+PY
+  ! python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null 2>&1
+}
+
+test_setup_receipt_does_not_claim_hostile_local_authenticity() {
+  local fixture="${TEST_TEMP_ROOT}/setup-receipt-local-forgery" receipt output
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  receipt="${fixture}/.agents/setup/receipt.json"
+  python3 - "${receipt}" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+payload = json.loads(path.read_text(encoding="utf-8"))
+payload.pop("checksum")
+payload["mutations"][0]["hunks"][0]["before"]["hash"] = "sha256:" + "0" * 64
+canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+payload["checksum"] = "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+path.write_text(json.dumps(payload), encoding="utf-8")
+PY
+  output="$(python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}")" || return
+  [[ "${output}" == 'Setup receipt validation passed ('*' mutation(s))' ]]
+}
+
+test_self_hosted_setup_outputs_are_render_equivalent() {
+  local output
+  output="$(python3 "${SETUP_CONFIGURATOR}" "${ROOT_DIR}" \
+    --github-repository pong1013/ai-workflow \
+    --remote-name origin)" || return
+  [[ "${output}" == "No changes." ]]
+}
+
+test_setup_render_preserves_instruction_content_outside_managed_blocks() {
+  local fixture="${TEST_TEMP_ROOT}/setup-render-bounds"
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Agents preface' 'User-owned agents tail' >"${fixture}/AGENTS.md"
+  printf '%s\n' '# Claude preface' 'User-owned claude tail' >"${fixture}/CLAUDE.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  grep -Fq '# Agents preface' "${fixture}/AGENTS.md" || return
+  grep -Fq 'User-owned agents tail' "${fixture}/AGENTS.md" || return
+  grep -Fq '# Claude preface' "${fixture}/CLAUDE.md" || return
+  grep -Fq 'User-owned claude tail' "${fixture}/CLAUDE.md" || return
+  [[ "$(run_setup_configurator "${fixture}")" == "No changes." ]]
 }
 
 test_setup_token_rejects_target_drift() {
@@ -682,6 +939,7 @@ test_setup_rejects_unknown_tracker() {
 write_valid_gitlab_setup_fixture() {
   local fixture="$1"
   mkdir -p "${fixture}/docs/agents"
+  cp "${ROOT_DIR}/.gitignore" "${fixture}/.gitignore"
   cp "${ROOT_DIR}/skills/setup-matt-pocock-skills/issue-tracker-gitlab.md" \
     "${fixture}/docs/agents/issue-tracker.md"
   sed -i.bak \
@@ -788,6 +1046,7 @@ test_setup_rejects_non_github_remote_mismatch() {
 test_valid_local_markdown_setup_output() {
   local fixture="${TEST_TEMP_ROOT}/valid-local-setup"
   mkdir -p "${fixture}/docs/agents"
+  cp "${ROOT_DIR}/.gitignore" "${fixture}/.gitignore"
   cp "${ROOT_DIR}/skills/setup-matt-pocock-skills/issue-tracker-local.md" \
     "${fixture}/docs/agents/issue-tracker.md"
   cp "${ROOT_DIR}/docs/agents/domain.md" "${fixture}/docs/agents/domain.md"
@@ -918,7 +1177,20 @@ run_test "README installs the complete staged Skill set" test_readme_installs_co
 run_test "valid repository setup passes" test_valid_setup_output
 run_test "setup routes AGENTS and CLAUDE instruction files" test_setup_routes_instruction_files
 run_test "setup previews and refuses unconfirmed writes" test_setup_requires_confirmation_and_previews
+run_test "setup previews and applies its tracked receipt ignore rule" test_setup_previews_and_applies_tracked_receipt_ignore_rule
+run_test "setup token rejects receipt ignore-target drift" test_setup_token_rejects_receipt_ignore_target_drift
+run_test "setup repairs an effective receipt-ignore negation" test_setup_repairs_effective_receipt_ignore_negation
+run_test "setup rejects an ineffective proposed ignore before writes" test_setup_rejects_ineffective_proposed_ignore_before_writes
 run_test "setup apply is idempotent" test_setup_apply_is_idempotent
+run_test "setup apply writes an ignored cross-task receipt" test_setup_apply_writes_ignored_cross_task_receipt
+run_test "setup no-op does not replace its last receipt" test_setup_noop_does_not_replace_receipt
+run_test "setup receipt rejects live content drift" test_setup_receipt_rejects_live_content_drift
+run_test "setup receipt rejects remote and plan drift" test_setup_receipt_rejects_remote_and_plan_drift
+run_test "incremental setup receipt validates its changed subset" test_setup_incremental_receipt_validates_changed_subset
+run_test "setup receipt rejects non-self-consistent corruption" test_setup_receipt_rejects_non_self_consistent_corruption
+run_test "setup receipt does not claim hostile-local authenticity" test_setup_receipt_does_not_claim_hostile_local_authenticity
+run_test "self-hosted setup outputs are render-equivalent" test_self_hosted_setup_outputs_are_render_equivalent
+run_test "setup render preserves content outside managed blocks" test_setup_render_preserves_instruction_content_outside_managed_blocks
 run_test "setup plan token rejects target routing drift" test_setup_token_rejects_target_drift
 run_test "setup plan token rejects approved-content drift" test_setup_token_rejects_content_drift
 run_test "setup plan token rejects file-creation drift" test_setup_token_rejects_file_creation_drift
