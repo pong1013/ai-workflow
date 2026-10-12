@@ -20,7 +20,9 @@ flowchart LR
     R -->|"passed"| K["Controller ticket commit"]
     R -->|"owned findings"| I
     K -->|"more tickets"| I
-    K -->|"all tickets"| F["Feature verify + review"]
+    K -->|"all tickets"| CR["Configuration reconciliation"]
+    CR -->|"configuration-reconciled"| F["Feature verify + review"]
+    CR -->|"owned findings"| I
     F --> D["Delivery Gate"]
     D --> PR["Push + pull request"]
 ```

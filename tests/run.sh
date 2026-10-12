@@ -138,6 +138,231 @@ test_state_model() {
   python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${STATE_MODEL}" >/dev/null
 }
 
+test_state_model_requires_configuration_reconciliation() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+model = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert model["version"] == 3
+assert "configuration-reconciliation" in model["states"]
+edges = {
+    (item["from"], item["event"], item["to"])
+    for item in model["transitions"]
+}
+assert (
+    "ticket-commit",
+    "ticket-committed-all-done",
+    "configuration-reconciliation",
+) in edges
+assert (
+    "configuration-reconciliation",
+    "configuration-reconciled",
+    "feature-review",
+) in edges
+assert (
+    "ticket-commit",
+    "ticket-committed-all-done",
+    "feature-review",
+) not in edges
+PY
+}
+
+test_state_model_rejects_reconciliation_bypass() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-bypass.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'edge = next(x for x in payload["transitions"] if x["event"] == "ticket-committed-all-done"); edge["to"] = "feature-review"'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_requires_exact_workspace_baseline() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["workspaceBaselinePolicy"]
+assert policy["granularity"] == "path-hunk-hash"
+assert set(policy["requiredFields"]) == {"path", "hunk", "contentHash"}
+PY
+}
+
+test_state_model_rejects_incomplete_workspace_baseline() {
+  local fixture="${TEST_TEMP_ROOT}/incomplete-workspace-baseline.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["workspaceBaselinePolicy"]["requiredFields"].remove("hunk")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_requires_append_only_mutation_provenance() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["mutationLedgerPolicy"]
+assert policy["appendOnly"] is True
+assert set(policy["eventRequiredFields"]) == {
+    "sequence",
+    "stage",
+    "ticket",
+    "provenance",
+    "path",
+    "hunk",
+    "beforeHash",
+    "afterHash",
+}
+assert policy["provenanceCategories"] == [
+    "ticket-owned",
+    "setup/configuration",
+    "project knowledge",
+    "pre-existing unrelated",
+]
+assert policy["hashChain"]["beforeMatchesPreviousAfter"] is True
+PY
+}
+
+test_state_model_rejects_invalid_provenance_category() {
+  local fixture="${TEST_TEMP_ROOT}/invalid-provenance-category.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["provenanceCategories"].append("miscellaneous")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_broken_mutation_hash_chain_policy() {
+  local fixture="${TEST_TEMP_ROOT}/broken-mutation-hash-chain.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["hashChain"]["beforeMatchesPreviousAfter"] = False'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_incomplete_mutation_events() {
+  local fixture="${TEST_TEMP_ROOT}/incomplete-mutation-events.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["eventRequiredFields"].remove("afterHash")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_requires_live_diff_current_view() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["mutationLedgerPolicy"]
+assert policy["currentView"] == {
+    "derivedFromLedger": True,
+    "validateAgainstLiveDiff": True,
+}
+PY
+}
+
+test_state_model_requires_non_authoritative_receipt_import() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+receipt = json.loads(pathlib.Path(sys.argv[1]).read_text())["mutationLedgerPolicy"]["receiptImport"]
+assert receipt == {
+    "evidenceOnly": True,
+    "approvalAuthority": False,
+    "validateLiveDiff": True,
+    "requiredFields": [
+        "eventSequence",
+        "evidenceOnly",
+        "approvalAuthority",
+        "terminalHash",
+        "receiptPath",
+        "receiptChecksum",
+    ],
+}
+PY
+}
+
+test_state_model_rejects_receipt_import_without_live_validation() {
+  local fixture="${TEST_TEMP_ROOT}/receipt-without-live-validation.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["receiptImport"]["validateLiveDiff"] = False'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_incomplete_receipt_import_contract() {
+  local fixture="${TEST_TEMP_ROOT}/incomplete-receipt-import-contract.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["receiptImport"]["requiredFields"].remove("receiptChecksum")'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_rejects_authoritative_receipt_import() {
+  local fixture="${TEST_TEMP_ROOT}/authoritative-receipt-import.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["mutationLedgerPolicy"]["receiptImport"]["approvalAuthority"] = True'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_state_model_requires_configuration_routing() {
+  python3 - "${STATE_MODEL}" <<'PY'
+import json
+import pathlib
+import sys
+
+policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["reconciliationPolicy"]
+assert policy["state"] == "configuration-reconciliation"
+assert policy["setupRouting"] == {
+    "mechanical": "first-blocker-ticket",
+    "semanticOrScopeOrContractConflict": "exception",
+}
+assert policy["projectKnowledge"] == "approved-ticket-or-explicit-alternative"
+assert policy["legacyCheckpointWithoutEvidence"] == "unverified"
+assert set(policy["blocksOn"]) == {
+    "invalid-provenance",
+    "broken-hash-chain",
+    "missing-event",
+    "changed-baseline-hunk",
+    "unexplained-mutation",
+}
+PY
+}
+
+test_state_model_rejects_missing_reconciliation_blockers() {
+  local blocker fixture
+  for blocker in \
+    invalid-provenance \
+    broken-hash-chain \
+    missing-event \
+    changed-baseline-hunk \
+    unexplained-mutation; do
+    fixture="${TEST_TEMP_ROOT}/missing-${blocker}.json"
+    mutate_json "${STATE_MODEL}" "${fixture}" \
+      "payload['reconciliationPolicy']['blocksOn'].remove('${blocker}')"
+    ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1 || return
+  done
+}
+
+test_state_model_rejects_trusted_legacy_checkpoint() {
+  local fixture="${TEST_TEMP_ROOT}/trusted-legacy-checkpoint.json"
+  mutate_json "${STATE_MODEL}" "${fixture}" \
+    'payload["reconciliationPolicy"]["legacyCheckpointWithoutEvidence"] = "trusted"'
+  ! python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${fixture}" >/dev/null 2>&1
+}
+
+test_controller_documents_configuration_reconciliation_contract() {
+  local reference="${CONTROLLER_DIR}/references/configuration-reconciliation.md"
+  grep -Fq '[references/configuration-reconciliation.md]' "${CONTROLLER_DIR}/SKILL.md" && \
+    grep -Fq 'path/hunk/hash' "${CONTROLLER_DIR}/SKILL.md" && \
+    grep -Fq 'append-only mutation ledger' "${CONTROLLER_DIR}/SKILL.md" && \
+    grep -Fq 'configuration-reconciliation' "${CONTROLLER_DIR}/SKILL.md" && \
+    grep -Fq '`path`, `hunk`, and `contentHash`' "${CONTROLLER_DIR}/references/checkpoints.md" && \
+    grep -Fq 'not approval authority' "${CONTROLLER_DIR}/references/checkpoints.md" && \
+    grep -Fq 'Mechanical, preview-approved setup' "${reference}" && \
+    grep -Fq 'semantic workflow change' "${reference}" && \
+    grep -Fq 'Project-knowledge writes' "${reference}" && \
+    grep -Fq 'Feature review cannot start until reconciliation passes.' "${reference}" && \
+    grep -Fq 'remains `unverified`' "${reference}"
+}
+
 test_state_model_rejects_shortcut() {
   local fixture="${TEST_TEMP_ROOT}/shortcut.json"
   mutate_json "${STATE_MODEL}" "${fixture}" \
@@ -1111,6 +1336,554 @@ test_setup_rejects_triage_configuration() {
   ! python3 "${SETUP_VALIDATOR}" "${fixture}" --require-github >/dev/null 2>&1
 }
 
+create_reconciliation_repository() {
+  local fixture="$1"
+  mkdir -p "${fixture}"
+  git -C "${fixture}" init -q || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  printf '%s\n' '.agents/setup/' >>"$(git_local_exclude_path "${fixture}")"
+  printf '%s\n' line1 line2 line3 line4 line5 line6 line7 line8 line9 line10 \
+    >"${fixture}/two-hunks.txt"
+  printf '%s\n' staged-before >"${fixture}/staged.txt"
+  printf '%s\n' unstaged-before >"${fixture}/unstaged.txt"
+  git -C "${fixture}" add two-hunks.txt staged.txt unstaged.txt
+  git -C "${fixture}" commit -qm 'baseline'
+
+  printf '%s\n' baseline-owned-by-user >"${fixture}/baseline-unrelated.txt"
+  perl -pi -e 's/^line2$/line2-after/; s/^line9$/line9-after/' "${fixture}/two-hunks.txt"
+  git -C "${fixture}" add two-hunks.txt
+  git -C "${fixture}" commit -qm 'ticket commit'
+  printf '%s\n' staged-after >"${fixture}/staged.txt"
+  git -C "${fixture}" add staged.txt
+  printf '%s\n' unstaged-after >"${fixture}/unstaged.txt"
+  printf '%s\n' untracked-after >"${fixture}/untracked.txt"
+  printf '%s\n' setup-after >"${fixture}/setup.txt"
+  mkdir -p "${fixture}/.agents/setup"
+  printf '%s\n' '{"validated":"by setup receipt validator"}' \
+    >"${fixture}/.agents/setup/receipt.json"
+}
+
+emit_reconciliation_view() {
+  local fixture="$1" base_commit="$2" output="$3"
+  python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${STATE_MODEL}" \
+    --repository-root "${fixture}" \
+    --baseline "${base_commit}" \
+    --emit-reconciliation-view >"${output}"
+}
+
+write_valid_reconciliation_instance() {
+  local view="$1" target="$2" base_commit="$3" fixture="$4"
+  python3 - "${view}" "${target}" "${base_commit}" "${fixture}" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+entries = view["entries"]
+baseline = [item for item in entries if item["path"] == "baseline-unrelated.txt"]
+assert len(baseline) == 1
+receipt_path = pathlib.Path(sys.argv[4]) / ".agents/setup/receipt.json"
+receipt_checksum = "sha256:" + hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+
+events = []
+imports = []
+for item in entries:
+    if item["path"] == "baseline-unrelated.txt":
+        continue
+    sequence = len(events) + 1
+    is_setup = item["path"] == "setup.txt"
+    events.append({
+        "sequence": sequence,
+        "stage": "repository-setup" if is_setup else "ticket-work",
+        "ticket": "#setup" if is_setup else "#12",
+        "provenance": "setup/configuration" if is_setup else "ticket-owned",
+        "path": item["path"],
+        "hunk": item["hunk"],
+        "beforeHash": item["beforeHash"],
+        "afterHash": item["afterHash"],
+    })
+    if is_setup:
+        imports.append({
+            "eventSequence": sequence,
+            "evidenceOnly": True,
+            "approvalAuthority": False,
+            "terminalHash": item["afterHash"],
+            "receiptPath": ".agents/setup/receipt.json",
+            "receiptChecksum": receipt_checksum,
+        })
+
+payload = {
+    "workspaceBaseline": {
+        "baseCommit": sys.argv[3],
+        "entries": [
+            {
+                "path": item["path"],
+                "hunk": item["hunk"],
+                "contentHash": item["contentHash"],
+            }
+            for item in baseline
+        ],
+    },
+    "mutationLedger": events,
+    "setupReceiptImports": imports,
+    "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload), encoding="utf-8")
+PY
+}
+
+prepare_valid_reconciliation_fixture() {
+  local fixture="$1" instance="$2" view="$3" base_commit
+  create_reconciliation_repository "${fixture}" || return
+  base_commit="$(git -C "${fixture}" rev-parse HEAD~1)" || return
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  write_valid_reconciliation_instance "${view}" "${instance}" "${base_commit}" "${fixture}"
+}
+
+validate_reconciliation_instance() {
+  local fixture="$1" instance="$2"
+  python3 "${ROOT_DIR}/scripts/validate_state_machine.py" "${STATE_MODEL}" \
+    --repository-root "${fixture}" \
+    --reconciliation "${instance}" >/dev/null
+}
+
+test_reconciliation_view_composes_every_git_surface() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-view" view base_commit
+  view="${TEST_TEMP_ROOT}/reconciliation-view.json"
+  create_reconciliation_repository "${fixture}" || return
+  base_commit="$(git -C "${fixture}" rev-parse HEAD~1)" || return
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${view}" <<'PY'
+import collections
+import json
+import pathlib
+import sys
+
+entries = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))["entries"]
+actual = collections.Counter((item["path"], item["surface"]) for item in entries)
+assert actual == collections.Counter({
+    ("two-hunks.txt", "committed"): 2,
+    ("staged.txt", "staged"): 1,
+    ("unstaged.txt", "unstaged"): 1,
+    ("baseline-unrelated.txt", "untracked"): 1,
+    ("untracked.txt", "untracked"): 1,
+    ("setup.txt", "untracked"): 1,
+})
+for item in entries:
+    assert item["hunk"]
+    assert item["contentHash"].startswith("sha256:")
+    assert item["beforeHash"].startswith("sha256:")
+    assert item["afterHash"].startswith("sha256:")
+PY
+}
+
+test_reconciliation_accepts_accounted_composite_view() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-valid"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-valid.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-valid-view.json"
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+  validate_reconciliation_instance "${fixture}" "${instance}"
+}
+
+test_reconciliation_imports_setup_before_feature_baseline() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-prebaseline-receipt"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-prebaseline-receipt.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-prebaseline-view.json" base_commit mutated
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  run_setup_configurator "${fixture}" >/dev/null || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  git -C "${fixture}" add AGENTS.md
+  git -C "${fixture}" commit -qm 'before setup'
+  base_commit="$(git -C "${fixture}" rev-parse HEAD)" || return
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null || return
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${fixture}" "${view}" "${instance}" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+view = json.loads(pathlib.Path(sys.argv[2]).read_text())
+receipt_path = root / ".agents/setup/receipt.json"
+receipt = json.loads(receipt_path.read_text())
+path = "docs/agents/issue-tracker.md"
+mutation = next(item for item in receipt["mutations"] if item["path"] == path)
+entry = next(item for item in view["entries"] if item["path"] == path)
+assert mutation["beforeHash"] != mutation["afterHash"]
+assert mutation["afterHash"] == entry["afterHash"]
+payload = {
+    "workspaceBaseline": {"baseCommit": view["baseCommit"], "entries": view["entries"]},
+    "mutationLedger": [{
+        "sequence": 1, "stage": "repository-setup", "ticket": "#setup",
+        "provenance": "setup/configuration", "path": path, "hunk": entry["hunk"],
+        "beforeHash": mutation["beforeHash"], "afterHash": mutation["afterHash"],
+    }],
+    "setupReceiptImports": [{
+        "eventSequence": 1, "evidenceOnly": True, "approvalAuthority": False,
+        "terminalHash": mutation["afterHash"], "receiptPath": ".agents/setup/receipt.json",
+        "receiptChecksum": "sha256:" + hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+    }],
+    "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[3]).write_text(json.dumps(payload))
+PY
+  [[ "$?" -eq 0 ]] || return
+  validate_reconciliation_instance "${fixture}" "${instance}" || return
+  # Accepted historical evidence does not weaken the import's integrity or authority checks.
+  for mutation in checksum terminal authority; do
+    mutated="${TEST_TEMP_ROOT}/reconciliation-prebaseline-${mutation}.json"
+    case "${mutation}" in
+      checksum) mutate_json "${instance}" "${mutated}" \
+        'payload["setupReceiptImports"][0]["receiptChecksum"] = "sha256:" + "0" * 64' ;;
+      terminal) mutate_json "${instance}" "${mutated}" \
+        'payload["setupReceiptImports"][0]["terminalHash"] = "sha256:" + "0" * 64' ;;
+      authority) mutate_json "${instance}" "${mutated}" \
+        'payload["setupReceiptImports"][0]["approvalAuthority"] = True' ;;
+    esac
+    ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+  done
+}
+
+test_reconciliation_rejects_event_sequence_errors() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-sequence"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-sequence.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-sequence-view.json" mutated
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+  for mutation in duplicate out-of-order; do
+    mutated="${TEST_TEMP_ROOT}/reconciliation-${mutation}.json"
+    if [[ "${mutation}" == duplicate ]]; then
+      mutate_json "${instance}" "${mutated}" \
+        'payload["mutationLedger"][1]["sequence"] = payload["mutationLedger"][0]["sequence"]'
+    else
+      mutate_json "${instance}" "${mutated}" \
+        'payload["mutationLedger"][0]["sequence"], payload["mutationLedger"][1]["sequence"] = payload["mutationLedger"][1]["sequence"], payload["mutationLedger"][0]["sequence"]'
+    fi
+    ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+  done
+}
+
+test_reconciliation_rejects_broken_hunk_chain() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-chain"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-chain.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-chain-view.json" mutated="${TEST_TEMP_ROOT}/reconciliation-broken-chain.json"
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+  mutate_json "${instance}" "${mutated}" \
+    'event = dict(payload["mutationLedger"][0]); event["sequence"] = len(payload["mutationLedger"]) + 1; event["beforeHash"] = "sha256:" + "0" * 64; payload["mutationLedger"].append(event)'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1
+}
+
+test_reconciliation_rejects_missing_and_unexplained_events() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-events"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-events.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-events-view.json" mutated
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-missing-event.json"
+  mutate_json "${instance}" "${mutated}" 'payload["mutationLedger"].pop()'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+
+  printf '%s\n' unexplained >"${fixture}/not-in-ledger.txt"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1
+}
+
+test_reconciliation_rejects_baseline_drift() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-baseline-drift"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-baseline-drift.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-baseline-drift-view.json"
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+  printf '%s\n' changed-after-baseline >"${fixture}/baseline-unrelated.txt"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1
+}
+
+test_reconciliation_rejects_stale_final_newline_event() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-final-newline"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-final-newline.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-final-newline-view.json" base_commit
+  mkdir -p "${fixture}"
+  git -C "${fixture}" init -q || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  printf 'old\n' >"${fixture}/text.txt"
+  git -C "${fixture}" add text.txt
+  git -C "${fixture}" commit -qm 'baseline'
+  base_commit="$(git -C "${fixture}" rev-parse HEAD)" || return
+  printf 'new\n' >"${fixture}/text.txt"
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${view}" "${instance}" <<'PY'
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text())
+entry, = view["entries"]
+payload = {
+    "workspaceBaseline": {"baseCommit": view["baseCommit"], "entries": []},
+    "mutationLedger": [{
+        "sequence": 1, "stage": "ticket-work", "ticket": "#12",
+        "provenance": "ticket-owned", "path": entry["path"], "hunk": entry["hunk"],
+        "beforeHash": entry["beforeHash"], "afterHash": entry["afterHash"],
+    }],
+    "setupReceiptImports": [], "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload))
+PY
+  [[ "$?" -eq 0 ]] || return
+  validate_reconciliation_instance "${fixture}" "${instance}" || return
+  printf 'new' >"${fixture}/text.txt"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1
+}
+
+test_reconciliation_rejects_stale_embedded_delimiter_event() {
+  local delimiter="${1:-\r}" label="${2:-bare-cr}"
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-${label}"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-${label}.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-${label}-view.json" base_commit
+  mkdir -p "${fixture}"
+  git -C "${fixture}" init -q || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  printf 'old\n' >"${fixture}/text.txt"
+  git -C "${fixture}" add text.txt
+  git -C "${fixture}" commit -qm 'baseline'
+  base_commit="$(git -C "${fixture}" rev-parse HEAD)" || return
+  printf 'new%bhidden-one\n' "${delimiter}" >"${fixture}/text.txt"
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${view}" "${instance}" <<'PY'
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text())
+entry, = view["entries"]
+payload = {
+    "workspaceBaseline": {"baseCommit": view["baseCommit"], "entries": []},
+    "mutationLedger": [{
+        "sequence": 1, "stage": "ticket-work", "ticket": "#12",
+        "provenance": "ticket-owned", "path": entry["path"], "hunk": entry["hunk"],
+        "beforeHash": entry["beforeHash"], "afterHash": entry["afterHash"],
+    }],
+    "setupReceiptImports": [], "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload))
+PY
+  [[ "$?" -eq 0 ]] || return
+  validate_reconciliation_instance "${fixture}" "${instance}" || return
+  printf 'new%bhidden-two\n' "${delimiter}" >"${fixture}/text.txt"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1
+}
+
+test_reconciliation_rejects_stale_textconv_event() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-textconv"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-textconv.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-textconv-view.json" base_commit
+  local changed_view="${TEST_TEMP_ROOT}/reconciliation-textconv-changed-view.json"
+  mkdir -p "${fixture}"
+  git -C "${fixture}" init -q || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  git -C "${fixture}" config diff.lossy.textconv 'sed s/hidden-[^[:space:]]*/hidden/g'
+  printf '*.txt diff=lossy\n' >"${fixture}/.gitattributes"
+  printf 'visible hidden-one\n' >"${fixture}/sample.txt"
+  git -C "${fixture}" add .gitattributes sample.txt
+  git -C "${fixture}" commit -qm 'baseline'
+  base_commit="$(git -C "${fixture}" rev-parse HEAD)" || return
+  # A visible hunk prevents a whole-file fallback from incidentally covering the hidden edit.
+  printf 'changed hidden-two\n' >"${fixture}/sample.txt"
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${view}" "${instance}" <<'PY'
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text())
+entry, = view["entries"]
+assert entry["path"] == "sample.txt"
+payload = {
+    "workspaceBaseline": {"baseCommit": view["baseCommit"], "entries": []},
+    "mutationLedger": [{
+        "sequence": 1, "stage": "ticket-work", "ticket": "#12",
+        "provenance": "ticket-owned", "path": entry["path"], "hunk": entry["hunk"],
+        "beforeHash": entry["beforeHash"], "afterHash": entry["afterHash"],
+    }],
+    "setupReceiptImports": [], "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload))
+PY
+  [[ "$?" -eq 0 ]] || return
+  validate_reconciliation_instance "${fixture}" "${instance}" || return
+  printf 'changed hidden-three\n' >"${fixture}/sample.txt"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1 || return
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${changed_view}" || return
+  python3 - "${view}" "${changed_view}" <<'PY'
+import json
+import pathlib
+import sys
+
+before, = json.loads(pathlib.Path(sys.argv[1]).read_text())["entries"]
+after, = json.loads(pathlib.Path(sys.argv[2]).read_text())["entries"]
+assert before["contentHash"] != after["contentHash"]
+assert before["afterHash"] != after["afterHash"]
+PY
+}
+
+test_reconciliation_rejects_binary_baseline_mode_drift() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-binary-mode"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-binary-mode.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-binary-mode-view.json" base_commit phase
+  local incomplete="${TEST_TEMP_ROOT}/reconciliation-binary-mode-incomplete.json"
+  mkdir -p "${fixture}"
+  git -C "${fixture}" init -q || return
+  git -C "${fixture}" config user.name 'AI Workflow Tests'
+  git -C "${fixture}" config user.email 'tests@example.invalid'
+  git -C "${fixture}" config core.filemode true
+  printf '\000old\n' >"${fixture}/binary.bin"
+  chmod 0644 "${fixture}/binary.bin"
+  git -C "${fixture}" add binary.bin
+  git -C "${fixture}" commit -qm 'baseline'
+  base_commit="$(git -C "${fixture}" rev-parse HEAD)" || return
+  printf '\000user\n' >"${fixture}/binary.bin"
+  emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+  python3 - "${view}" "${instance}" <<'PY'
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text())
+payload = {
+    "workspaceBaseline": {"baseCommit": view["baseCommit"], "entries": view["entries"]},
+    "mutationLedger": [], "setupReceiptImports": [], "approvedAlternatives": [],
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload))
+PY
+  [[ "$?" -eq 0 ]] || return
+  validate_reconciliation_instance "${fixture}" "${instance}" || return
+  chmod 0755 "${fixture}/binary.bin"
+  ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1 || return
+  for phase in mode-only content-and-mode; do
+    if [[ "${phase}" == content-and-mode ]]; then
+      printf '\000ticket\n' >"${fixture}/binary.bin"
+      ! validate_reconciliation_instance "${fixture}" "${instance}" >/dev/null 2>&1 || return
+    fi
+    emit_reconciliation_view "${fixture}" "${base_commit}" "${view}" || return
+    python3 - "${view}" "${instance}" "${incomplete}" <<'PY'
+import copy
+import json
+import pathlib
+import sys
+
+view = json.loads(pathlib.Path(sys.argv[1]).read_text())
+payload = json.loads(pathlib.Path(sys.argv[2]).read_text())
+baseline = {(item["path"], item["hunk"]): item for item in payload["workspaceBaseline"]["entries"]}
+payload["mutationLedger"] = []
+for entry in view["entries"]:
+    original = baseline.get((entry["path"], entry["hunk"]), entry)
+    payload["mutationLedger"].append({
+        "sequence": len(payload["mutationLedger"]) + 1,
+        "stage": "ticket-work", "ticket": "#12", "provenance": "ticket-owned",
+        "path": entry["path"], "hunk": entry["hunk"],
+        "beforeHash": original["afterHash"] if original is not entry else entry["beforeHash"],
+        "afterHash": entry["afterHash"],
+    })
+incomplete = copy.deepcopy(payload)
+incomplete["mutationLedger"] = [event for event in incomplete["mutationLedger"] if event["hunk"] == "whole-file"]
+for sequence, event in enumerate(incomplete["mutationLedger"], 1):
+    event["sequence"] = sequence
+pathlib.Path(sys.argv[2]).write_text(json.dumps(payload))
+pathlib.Path(sys.argv[3]).write_text(json.dumps(incomplete))
+PY
+    [[ "$?" -eq 0 ]] || return
+    ! validate_reconciliation_instance "${fixture}" "${incomplete}" >/dev/null 2>&1 || return
+    validate_reconciliation_instance "${fixture}" "${instance}" || return
+  done
+}
+
+test_reconciliation_rejects_invalid_receipt_imports() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-receipt"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-receipt.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-receipt-view.json" mutated
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+  for mutation in authoritative not-evidence terminal-mismatch missing-reference checksum-drift path-traversal; do
+    mutated="${TEST_TEMP_ROOT}/reconciliation-receipt-${mutation}.json"
+    case "${mutation}" in
+      authoritative)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0]["approvalAuthority"] = True'
+        ;;
+      not-evidence)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0]["evidenceOnly"] = False'
+        ;;
+      terminal-mismatch)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0]["terminalHash"] = "sha256:" + "0" * 64'
+        ;;
+      missing-reference)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0].pop("receiptPath")'
+        ;;
+      checksum-drift)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0]["receiptChecksum"] = "sha256:" + "0" * 64'
+        ;;
+      path-traversal)
+        mutate_json "${instance}" "${mutated}" \
+          'payload["setupReceiptImports"][0]["receiptPath"] = "../receipt.json"'
+        ;;
+    esac
+    ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+  done
+}
+
+test_reconciliation_enforces_stage_ownership_and_disposition() {
+  local fixture="${TEST_TEMP_ROOT}/reconciliation-ownership"
+  local instance="${TEST_TEMP_ROOT}/reconciliation-ownership.json"
+  local view="${TEST_TEMP_ROOT}/reconciliation-ownership-view.json" mutated
+  prepare_valid_reconciliation_fixture "${fixture}" "${instance}" "${view}" || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-invalid-stage.json"
+  mutate_json "${instance}" "${mutated}" \
+    'payload["mutationLedger"][0]["stage"] = "invented-stage"'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-ticket-without-owner.json"
+  mutate_json "${instance}" "${mutated}" \
+    'event = next(x for x in payload["mutationLedger"] if x["provenance"] == "ticket-owned"); event["ticket"] = None'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-fake-preexisting.json"
+  mutate_json "${instance}" "${mutated}" \
+    'event = next(x for x in payload["mutationLedger"] if x["provenance"] == "ticket-owned"); event["provenance"] = "pre-existing unrelated"; event["ticket"] = None'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-unapproved-knowledge.json"
+  mutate_json "${instance}" "${mutated}" \
+    'event = next(x for x in payload["mutationLedger"] if x["provenance"] == "ticket-owned"); event["provenance"] = "project knowledge"; event["ticket"] = None'
+  ! validate_reconciliation_instance "${fixture}" "${mutated}" >/dev/null 2>&1 || return
+
+  mutated="${TEST_TEMP_ROOT}/reconciliation-approved-knowledge.json"
+  mutate_json "${instance}" "${mutated}" \
+    'event = next(x for x in payload["mutationLedger"] if x["provenance"] == "ticket-owned"); event["provenance"] = "project knowledge"; event["ticket"] = None; payload["approvedAlternatives"] = [{"eventSequence": event["sequence"], "authority": "exception", "approvalReference": "current-task-message-42"}]'
+  validate_reconciliation_instance "${fixture}" "${mutated}" || return
+
+  for reference_mutation in missing empty; do
+    local invalid="${TEST_TEMP_ROOT}/reconciliation-alternative-${reference_mutation}.json"
+    if [[ "${reference_mutation}" == missing ]]; then
+      mutate_json "${mutated}" "${invalid}" \
+        'payload["approvedAlternatives"][0].pop("approvalReference")'
+    else
+      mutate_json "${mutated}" "${invalid}" \
+        'payload["approvedAlternatives"][0]["approvalReference"] = ""'
+    fi
+    ! validate_reconciliation_instance "${fixture}" "${invalid}" >/dev/null 2>&1 || return
+  done
+}
+
 test_runtime_safety_contract() {
   grep -Fq 'setup-matt-pocock-skills' "${CONTROLLER_DIR}/references/preflight.md" && \
     grep -Fq 'exactly two top-level worker roles' "${CONTROLLER_DIR}/references/quality-loop.md" && \
@@ -1135,7 +1908,33 @@ run_test "Plugin contains the exact final Skill set" test_exact_skill_set
 run_test "all workflow Skills are explicit-only" test_explicit_invocation_metadata
 run_test "published assets contain no scaffold placeholders" test_no_placeholders
 run_test "all relative Markdown links resolve" test_all_markdown_links
-run_test "v2 state and authorization model passes" test_state_model
+run_test "v3 state and authorization model passes" test_state_model
+run_test "state model routes all completed tickets through configuration reconciliation" test_state_model_requires_configuration_reconciliation
+run_test "state model rejects bypassing configuration reconciliation" test_state_model_rejects_reconciliation_bypass
+run_test "workspace baseline records path, hunk, and hash" test_state_model_requires_exact_workspace_baseline
+run_test "state model rejects an incomplete workspace baseline" test_state_model_rejects_incomplete_workspace_baseline
+run_test "mutation provenance is append-only with exact categories and hash chaining" test_state_model_requires_append_only_mutation_provenance
+run_test "state model rejects an invalid provenance category" test_state_model_rejects_invalid_provenance_category
+run_test "state model rejects a disabled mutation hash chain" test_state_model_rejects_broken_mutation_hash_chain_policy
+run_test "state model rejects incomplete mutation events" test_state_model_rejects_incomplete_mutation_events
+run_test "mutation current view is ledger-derived and checked against live diff" test_state_model_requires_live_diff_current_view
+run_test "setup receipt import is evidence-only and live-validated" test_state_model_requires_non_authoritative_receipt_import
+run_test "state model rejects receipt import without live validation" test_state_model_rejects_receipt_import_without_live_validation
+run_test "state model rejects an incomplete receipt-import binding contract" test_state_model_rejects_incomplete_receipt_import_contract
+run_test "state model rejects receipt approval authority" test_state_model_rejects_authoritative_receipt_import
+run_test "reconciliation routes setup, project knowledge, and invalid evidence" test_state_model_requires_configuration_routing
+run_test "state model rejects missing provenance, chain, event, drift, and unexplained-mutation blockers" test_state_model_rejects_missing_reconciliation_blockers
+run_test "legacy checkpoints without provenance remain unverified" test_state_model_rejects_trusted_legacy_checkpoint
+run_test "controller documents the configuration reconciliation contract" test_controller_documents_configuration_reconciliation_contract
+run_test "reconciliation view composes committed, staged, unstaged, and untracked hunks" test_reconciliation_view_composes_every_git_surface
+run_test "reconciliation accepts a fully accounted composite view" test_reconciliation_accepts_accounted_composite_view
+run_test "reconciliation imports validated historical setup evidence by its baseline terminal binding" test_reconciliation_imports_setup_before_feature_baseline
+run_test "reconciliation rejects duplicate and out-of-order event sequences" test_reconciliation_rejects_event_sequence_errors
+run_test "reconciliation rejects a broken per-hunk hash chain" test_reconciliation_rejects_broken_hunk_chain
+run_test "reconciliation rejects missing and unexplained events" test_reconciliation_rejects_missing_and_unexplained_events
+run_test "reconciliation rejects changed baseline-unrelated content" test_reconciliation_rejects_baseline_drift
+run_test "reconciliation rejects untrusted, terminal-mismatched, missing, drifted, and unsafe receipt imports" test_reconciliation_rejects_invalid_receipt_imports
+run_test "reconciliation enforces registered stages, ticket ownership, baseline provenance, and approved alternatives" test_reconciliation_enforces_stage_ownership_and_disposition
 run_test "state model rejects a delivery shortcut" test_state_model_rejects_shortcut
 run_test "state model separates Delivery approval from success" test_state_model_rejects_delivery_approval_as_completion
 run_test "state model requires push and pull-request success evidence" test_state_model_requires_both_delivery_results
@@ -1218,6 +2017,13 @@ run_test "setup validator rejects AGENTS and CLAUDE drift" test_setup_rejects_in
 run_test "setup validator rejects an incomplete managed block" test_setup_rejects_incomplete_managed_block
 run_test "setup validator rejects credentials" test_setup_rejects_credentials
 run_test "setup validator rejects triage configuration" test_setup_rejects_triage_configuration
+run_test "reconciliation rejects a stale ledger event after final LF is lost" test_reconciliation_rejects_stale_final_newline_event
+run_test "reconciliation rejects a stale ledger after bare-CR suffix mutation" test_reconciliation_rejects_stale_embedded_delimiter_event '\r' bare-cr
+run_test "reconciliation rejects a stale ledger after CRLF suffix mutation" test_reconciliation_rejects_stale_embedded_delimiter_event '\r\n' crlf
+run_test "reconciliation rejects a stale ledger after vertical-tab suffix mutation" test_reconciliation_rejects_stale_embedded_delimiter_event '\v' vertical-tab
+run_test "reconciliation rejects a stale ledger after form-feed suffix mutation" test_reconciliation_rejects_stale_embedded_delimiter_event '\f' form-feed
+run_test "reconciliation rejects binary baseline mode drift without an event" test_reconciliation_rejects_binary_baseline_mode_drift
+run_test "reconciliation rejects hidden raw-byte drift with a lossy textconv and visible hunk" test_reconciliation_rejects_stale_textconv_event
 run_test "runtime safety contract is wired" test_runtime_safety_contract
 run_test "old ship-feature controller is not published" test_old_controller_is_not_published
 

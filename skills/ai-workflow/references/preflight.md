@@ -10,4 +10,6 @@ Complete this preflight before creating a Feature Run.
 6. Check that `gh` is available. Check authentication and repository access before the first GitHub-dependent read or write; never store credentials in repository files or checkpoints.
 7. Read `.agents/project-contract.md`. If it is absent, continue to approved Contract Discovery using [workspace-and-contract.md](workspace-and-contract.md).
 
+If `.agents/setup/receipt.json` exists, treat it only as a candidate provenance handoff. Validate it with the setup receipt validator against the current repository, approved plan, and live outputs before importing it into a Feature Run. A valid receipt supplies `setup/configuration` evidence but no approval authority. Missing, invalid, stale, or mismatched evidence remains unverified and enters Exception when its changes cannot otherwise be explained.
+
 Do not repeat stable setup questions on every run. Revalidate live repository identity, remote, tools, and access, and ask only when evidence is missing, unsafe, unsupported, or contradictory.

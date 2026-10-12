@@ -8,7 +8,7 @@ Ticket Breakdown approval and successful ticket-quality evidence authorize only 
 
 ## Feature review
 
-After all ticket commits exist, run complete verification and a fresh `$code-review` from the Feature Run baseline across the whole branch. Append a feature-level round with the exact checks and separate Standards/Spec outcomes, even if it fails or has no implementation change. Resolve routed findings and repeat while evidence improves, retaining each earlier round.
+After all ticket commits exist, complete `configuration-reconciliation` before running complete verification and a fresh `$code-review` from the Feature Run baseline across the whole branch. Append a feature-level round with the exact checks and separate Standards/Spec outcomes, even if it fails or has no implementation change. Resolve routed findings and repeat while evidence improves, retaining each earlier round; any new fix returns through ticket work, commit, and reconciliation before another feature review.
 
 ## Delivery Gate
 

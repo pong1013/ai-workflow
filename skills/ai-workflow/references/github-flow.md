@@ -20,3 +20,5 @@ GitHub Issues are the only supported tracker for this release.
 Link every ticket to the parent as a native sub-issue when available. Prefer native GitHub issue dependencies; when the configured capability is unavailable, use an explicit `Blocked by: #N` fallback and record the limitation. Do not apply triage labels, close the parent, assign tickets, or perform other undisclosed tracker mutations.
 
 The ready frontier contains open child tickets whose blockers are all complete in the current run. This release executes the first ready ticket in approved order and never runs multiple tickets concurrently.
+
+When validated setup evidence describes only mechanical, preview-approved repository setup required by the requesting feature, the breakdown makes that work the first blocker ticket. Setup that changes workflow semantics, expands the approved product scope, or conflicts with the Project Contract enters Exception rather than being silently added. Durable project-knowledge writes likewise require approved ticket scope or an explicitly approved alternative before configuration reconciliation can pass.
