@@ -788,6 +788,44 @@ test_setup_previews_and_applies_tracked_receipt_ignore_rule() {
   python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" >/dev/null
 }
 
+test_setup_preserves_effective_broad_receipt_ignore_rule() {
+  local fixture="${TEST_TEMP_ROOT}/setup-broad-ignore-rule"
+  local output token gitignore_before
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  printf '%s\n' '# User-owned broad rule' '.agents/' 'user-owned.log' >"${fixture}/.gitignore"
+  gitignore_before="$(shasum -a 256 "${fixture}/.gitignore")" || return
+
+  output="$(run_setup_configurator "${fixture}")" || return
+  ! grep -Fq -- '--- a/.gitignore' <<<"${output}" || return
+  token="$(sed -n 's/^Setup plan token: //p' <<<"${output}")"
+  [[ "${token}" == sha256:* ]] || return
+  [[ "$(shasum -a 256 "${fixture}/.gitignore")" == "${gitignore_before}" ]] || return
+
+  run_setup_configurator "${fixture}" \
+    --apply --confirmed --plan-token "${token}" >/dev/null || return
+  [[ "$(shasum -a 256 "${fixture}/.gitignore")" == "${gitignore_before}" ]] || return
+  git -C "${fixture}" check-ignore -q .agents/setup/receipt.json || return
+  [[ -f "${fixture}/.agents/setup/receipt.json" ]] || return
+  python3 "${SETUP_RECEIPT_VALIDATOR}" "${fixture}" --plan-token "${token}" >/dev/null || return
+  python3 "${SETUP_VALIDATOR}" "${fixture}" --require-github --remote-name origin
+}
+
+test_setup_validator_rejects_effective_receipt_ignore_negation() {
+  local fixture="${TEST_TEMP_ROOT}/setup-validator-ignore-negation" output
+  mkdir -p "${fixture}"
+  printf '%s\n' '# Existing agents' >"${fixture}/AGENTS.md"
+  apply_setup_configurator "${fixture}" >/dev/null || return
+  printf '%s\n' '!.agents/setup/' >>"${fixture}/.gitignore"
+  ! git -C "${fixture}" check-ignore -q .agents/setup/receipt.json || return
+
+  if output="$(python3 "${SETUP_VALIDATOR}" "${fixture}" \
+    --require-github --remote-name origin 2>&1)"; then
+    return 1
+  fi
+  grep -Fqi 'ignore' <<<"${output}"
+}
+
 test_setup_token_rejects_receipt_ignore_target_drift() {
   local fixture="${TEST_TEMP_ROOT}/setup-ignore-target-drift"
   local token exclude_path exclude_before exclude_after
@@ -1977,6 +2015,8 @@ run_test "valid repository setup passes" test_valid_setup_output
 run_test "setup routes AGENTS and CLAUDE instruction files" test_setup_routes_instruction_files
 run_test "setup previews and refuses unconfirmed writes" test_setup_requires_confirmation_and_previews
 run_test "setup previews and applies its tracked receipt ignore rule" test_setup_previews_and_applies_tracked_receipt_ignore_rule
+run_test "setup preserves an effective broad receipt ignore rule through both validators" test_setup_preserves_effective_broad_receipt_ignore_rule
+run_test "setup validator rejects an effective receipt-ignore negation" test_setup_validator_rejects_effective_receipt_ignore_negation
 run_test "setup token rejects receipt ignore-target drift" test_setup_token_rejects_receipt_ignore_target_drift
 run_test "setup repairs an effective receipt-ignore negation" test_setup_repairs_effective_receipt_ignore_negation
 run_test "setup rejects an ineffective proposed ignore before writes" test_setup_rejects_ineffective_proposed_ignore_before_writes

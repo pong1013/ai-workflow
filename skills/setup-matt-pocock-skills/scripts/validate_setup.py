@@ -8,8 +8,8 @@ import re
 from pathlib import Path
 
 from configure_repository import (
-    RECEIPT_IGNORE_RULE,
     SetupError,
+    gitignore_ignores_receipt,
     git_remote_urls,
     github_repository,
     remote_hostname,
@@ -91,8 +91,11 @@ def main() -> None:
     except OSError as error:
         errors.append(f"cannot read .gitignore: {error}")
         gitignore_text = ""
-    if RECEIPT_IGNORE_RULE not in {line.strip() for line in gitignore_text.splitlines()}:
-        errors.append(".gitignore must ignore .agents/setup/")
+    try:
+        if not gitignore_ignores_receipt(gitignore_text, root):
+            errors.append(".gitignore must effectively ignore .agents/setup/receipt.json")
+    except (OSError, SetupError, ValueError) as error:
+        errors.append(f"cannot validate receipt ignore coverage: {error}")
 
     tracker_match = TRACKER.search(tracker_text)
     tracker_name = tracker_match.group(1).strip() if tracker_match else ""

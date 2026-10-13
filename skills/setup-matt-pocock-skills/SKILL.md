@@ -33,7 +33,7 @@ Default to one root `CONTEXT.md` and `docs/adr/`. Offer a `CONTEXT-MAP.md` with 
 
 ## Preview and write
 
-Show the complete proposed files and instruction blocks before mutation. The plan includes a preserved-content `.gitignore` update that adds `.agents/setup/` when absent. Obtain the Setup Confirmation Gate, then recheck repository identity and status.
+Show the complete proposed files and instruction blocks before mutation. The plan preserves compatible `.gitignore` content and adds `.agents/setup/` only when existing rules do not effectively ignore the receipt. Obtain the Setup Confirmation Gate, then recheck repository identity and status.
 
 Use these seed files as relevant:
 
@@ -95,7 +95,7 @@ Update only the bounded block; preserve all surrounding user content. If an unbo
 
 ## Validate and finish
 
-Run the bundled `scripts/validate_setup.py <repository-root>` after writing. `$ai-workflow` runs it with `--require-github --remote-name <name>` so the validator reads that remote from the live Git worktree and compares it with the concrete configuration. Validate the receipt before handing it to another task:
+Run the bundled `scripts/validate_setup.py <repository-root>` after writing. The validator uses the same isolated Git ignore check as preview and apply, accepting effective broader rules such as `.agents/` and rejecting ineffective or negated coverage. This checks ignore rules independently of whether the receipt is tracked; tracked files still remain observable to reconciliation. `$ai-workflow` runs it with `--require-github --remote-name <name>` so the validator reads that remote from the live Git worktree and compares it with the concrete configuration. Validate the receipt before handing it to another task:
 
 ```bash
 python3 <skill-root>/scripts/validate_setup_receipt.py <repository-root> \
