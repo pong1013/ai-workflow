@@ -78,6 +78,7 @@ EXPECTED_OPERATIONS = {
     ("commit-ticket", "ticket-commit", "ticket-commit-authority"),
     ("push-feature-branch", "delivery-approved", "delivery"),
     ("create-pull-request", "delivery-approved", "delivery"),
+    ("create-deferred-configuration-follow-up", "exception", "exception"),
 }
 TERMINAL = {"complete", "cancelled", "blocked"}
 EXPECTED_STATES = {
@@ -253,6 +254,21 @@ EXPECTED_INTERACTION_POLICY = {
         "showKnownQueuedDecisions": True,
         "recomputeAfterEachAnswer": True,
         "includeDomainModelingQuestions": True,
+    },
+}
+
+EXPECTED_DELIVERY_POLICY = {
+    "requiresReconciliation": True,
+    "pendingChanges": "clean-or-exact-unchanged-baseline-unrelated",
+    "residualDisclosure": "path-hunk-hash-in-existing-delivery-gate",
+    "residualApproval": "delivery",
+    "baselineDriftRoute": "configuration-reconciliation-or-exception",
+    "deferredFollowUp": {
+        "authority": "exception",
+        "artifact": "standalone-github-issue",
+        "inParentChildGraph": False,
+        "automaticPostMergeBranch": False,
+        "laterRun": "origin-pr-merged-and-new-workspace-gate",
     },
 }
 
@@ -762,6 +778,102 @@ def validate_reconciliation_instance(root: Path, instance_path: Path) -> None:
             raise ReconciliationError(f"unexplained live hunk has no mutation event: {key}")
 
 
+def pending_diff_hashes(root: Path) -> dict[str, str]:
+    """Bind index and worktree separately, including cancelling staged changes."""
+    if git(root, "ls-files", "--unmerged", "-z"):
+        raise ReconciliationError("Delivery requires a resolved index without merge conflicts")
+    common = ("--no-ext-diff", "--no-textconv", "--no-renames", "--binary", "--unified=0")
+    untracked = bytearray()
+    for path in sorted(nul_paths(git(root, "ls-files", "--others", "--exclude-standard", "-z"))):
+        target = root / path
+        mode = b"120000" if target.is_symlink() else (
+            b"100755" if target.stat().st_mode & 0o111 else b"100644"
+        )
+        content = repository_file_bytes(root, path)
+        untracked.extend(path.encode("utf-8", errors="surrogateescape") + b"\0" + mode + b"\0")
+        untracked.extend(str(len(content)).encode() + b"\0" + content)
+    return {
+        "staged": sha256_bytes(git(root, "diff", "--cached", *common, "HEAD", "--")),
+        "unstaged": sha256_bytes(git(root, "diff", *common, "--")),
+        "untracked": sha256_bytes(bytes(untracked)),
+    }
+
+
+def emit_delivery_view(root: Path) -> dict[str, Any]:
+    view = emit_reconciliation_view(root, "HEAD")
+    view["pendingDiffHashes"] = pending_diff_hashes(root)
+    return view
+
+
+def validate_delivery_instance(root: Path, instance_path: Path) -> None:
+    # A caller's cached success flag never replaces live reconciliation.
+    validate_reconciliation_instance(root, instance_path)
+    instance = json.loads(instance_path.read_text(encoding="utf-8"))
+    delivery = require_mapping(instance.get("delivery"), "delivery")
+    if delivery.get("configurationReconciled") is not True:
+        raise ReconciliationError("Delivery requires successful configuration reconciliation")
+    baseline = instance["workspaceBaseline"]
+    baseline_entries = {entry_key(item): item for item in baseline["entries"]}
+    pending = emit_delivery_view(root)
+    disclosure = require_list(delivery.get("residualBaselineEntries"), "delivery.residualBaselineEntries")
+    disclosed: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, value in enumerate(disclosure):
+        entry = reconciliation_entry(value, f"delivery.residualBaselineEntries[{index}]")
+        if entry_key(entry) in disclosed:
+            raise ReconciliationError("duplicate Delivery residual disclosure")
+        disclosed[entry_key(entry)] = entry
+    pending_entries = {entry_key(item): item for item in pending["entries"]}
+    if set(disclosed) != set(pending_entries):
+        raise ReconciliationError("Delivery residual disclosure must match every pending hunk")
+    for key, entry in pending_entries.items():
+        original = baseline_entries.get(key)
+        if original is None or original["contentHash"] != entry["contentHash"]:
+            raise ReconciliationError("Delivery pending mutation is not unchanged baseline unrelated work")
+        if disclosed[key]["contentHash"] != entry["contentHash"]:
+            raise ReconciliationError("Delivery residual disclosure hash drift")
+        if any(entry_key(event) == key and event["provenance"] != "pre-existing unrelated"
+               for event in instance["mutationLedger"]):
+            raise ReconciliationError("Delivery residual mutation has run-owned provenance")
+    empty_hash = sha256_bytes(b"")
+    dirty = any(value != empty_hash for value in pending["pendingDiffHashes"].values())
+    if dirty:
+        original_hashes = require_mapping(baseline.get("pendingDiffHashes"), "workspaceBaseline.pendingDiffHashes")
+        if original_hashes != pending["pendingDiffHashes"]:
+            raise ReconciliationError("Delivery index/worktree surfaces changed from baseline")
+        if not pending_entries:
+            raise ReconciliationError("Delivery has cancelling staged/unstaged mutations without baseline hunks")
+
+
+def validate_deferred_follow_up(instance_path: Path) -> None:
+    try:
+        follow_up = require_mapping(json.loads(instance_path.read_text(encoding="utf-8")), "deferredFollowUp")
+    except (OSError, json.JSONDecodeError) as error:
+        raise ReconciliationError(f"cannot read deferred follow-up: {error}") from error
+    for field, expected in {
+        "state": "exception", "authority": "exception",
+        "artifact": "standalone-github-issue", "inParentChildGraph": False,
+        "automaticPostMergeBranch": False,
+        "laterRun": "origin-pr-merged-and-new-workspace-gate",
+    }.items():
+        if follow_up.get(field) != expected or (
+            isinstance(expected, bool) and follow_up.get(field) is not expected
+        ):
+            raise ReconciliationError(f"deferred follow-up has invalid {field}")
+    for field in ("approvalReference", "originatingFeature", "reason"):
+        require_string(follow_up.get(field), f"deferredFollowUp.{field}")
+    mutations = require_list(follow_up.get("mutations"), "deferredFollowUp.mutations")
+    if not mutations:
+        raise ReconciliationError("deferred follow-up requires exact mutation evidence")
+    keys: set[tuple[str, str]] = set()
+    for index, value in enumerate(mutations):
+        entry = reconciliation_entry(value, f"deferredFollowUp.mutations[{index}]")
+        if entry.get("provenance") not in {"setup/configuration", "project knowledge"}:
+            raise ReconciliationError("deferred follow-up requires configuration provenance")
+        if entry_key(entry) in keys:
+            raise ReconciliationError("duplicate deferred follow-up mutation")
+        keys.add(entry_key(entry))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("model", type=Path)
@@ -770,6 +882,9 @@ def main() -> None:
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--emit-reconciliation-view", action="store_true")
     actions.add_argument("--reconciliation", type=Path)
+    actions.add_argument("--emit-delivery-view", action="store_true")
+    actions.add_argument("--delivery", type=Path)
+    actions.add_argument("--deferred-follow-up", type=Path)
     args = parser.parse_args()
     model = json.loads(args.model.read_text(encoding="utf-8"))
     errors: list[str] = []
@@ -847,6 +962,8 @@ def main() -> None:
         errors.append("reconciliation policy differs from the workflow contract")
     if model.get("interactionPolicy") != EXPECTED_INTERACTION_POLICY:
         errors.append("interaction policy differs from the workflow contract")
+    if model.get("deliveryPolicy") != EXPECTED_DELIVERY_POLICY:
+        errors.append("delivery policy differs from the workflow contract")
 
     authorities = {}
     for item in model.get("authorities", []):
@@ -912,6 +1029,12 @@ def main() -> None:
             print(f"State model validation error: {error}")
         raise SystemExit(1)
     try:
+        if args.deferred_follow_up is not None:
+            if args.repository_root is not None or args.baseline is not None:
+                parser.error("--deferred-follow-up validates a publication draft without repository options")
+            validate_deferred_follow_up(args.deferred_follow_up)
+            print("Deferred configuration follow-up structure validation passed; approval must be resolved by controller")
+            return
         if args.emit_reconciliation_view:
             if args.repository_root is None or args.baseline is None:
                 parser.error(
@@ -924,6 +1047,17 @@ def main() -> None:
                     sort_keys=True,
                 )
             )
+            return
+        if args.emit_delivery_view:
+            if args.repository_root is None or args.baseline is not None:
+                parser.error("--emit-delivery-view requires --repository-root and uses HEAD")
+            print(json.dumps(emit_delivery_view(args.repository_root), indent=2, sort_keys=True))
+            return
+        if args.delivery is not None:
+            if args.repository_root is None or args.baseline is not None:
+                parser.error("--delivery requires --repository-root; baseline comes from instance")
+            validate_delivery_instance(args.repository_root, args.delivery)
+            print("Feature Run reconciled Delivery validation passed")
             return
         if args.reconciliation is not None:
             if args.repository_root is None:

@@ -181,3 +181,27 @@ Expected: the valid receipt imports only its changed hunks as `setup/configurati
 Fixture: one run writes durable project knowledge during Grill without ticket ownership; another resumes a checkpoint created before mutation provenance existed.
 
 Expected: the project-knowledge write must enter approved ticket scope or an explicitly approved alternative before reconciliation. The legacy checkpoint remains unverified and is never silently upgraded; independently valid evidence may be imported, otherwise the unresolved provenance appears at Resume or Exception.
+
+## 31. Clean reconciliation precedes feature review and Delivery
+
+Fixture: all ticket changes are verified and committed in a disposable clean repository. Validate the concrete mutation ledger against the Feature Run base, then complete feature verification and a fresh Standards/Spec review. Repeat with a missing mutation event while retaining a declared `configurationReconciled: true` flag.
+
+Expected: only the successful live reconciliation enters feature review. A clean index and worktree pass the Delivery residual check; the declared flag cannot bypass invalid live reconciliation. The existing Delivery Gate approves the exact push and pull-request bundle, and both operations must succeed before completion.
+
+## 32. Exact unchanged unrelated residuals use the existing Delivery Gate
+
+Fixture: capture unrelated staged, unstaged, and untracked changes at Workspace with exact path/hunk/hash and independent pending-surface hashes. Complete and commit all ticket-owned changes without touching these residuals. Supply the unchanged residual entries in the Delivery evidence. Repeat with omitted or changed disclosure hashes, and with unchanged final file bytes but a transfer from unstaged to staged state.
+
+Expected: the exact unchanged unrelated baseline is permissible only with exact disclosure in the existing Delivery Gate; that same approval covers its presence without adding a new Gate. Missing or changed evidence blocks Delivery and routes to reconciliation or Exception. A staged/unstaged transfer is baseline drift even when the final durable diff is identical.
+
+## 33. Net-zero durable diff is not a clean Git workspace
+
+Fixture: starting with base content A, stage content B, then restore worktree content A while leaving index B. The final base-to-worktree diff is empty but `git status` still shows staged and unstaged changes. The Workspace baseline was clean.
+
+Expected: Delivery fails because the actual index and worktree have unexplained pending changes. No `configurationReconciled` declaration or empty final-diff view can turn this into a clean workspace. Independent staged and unstaged surface evidence must be checked before Delivery.
+
+## 34. Approved configuration deferral creates only a standalone follow-up
+
+Fixture: present an Exception proposal naming the exact deferred configuration path/hunk/hash, provenance category, reason, and originating feature. Approve that exact standalone GitHub follow-up issue. Exercise variants without Exception approval, without exact evidence, with current-parent child/dependency membership, and with automatic post-merge branch creation. After merging the original feature, explicitly invoke a later run for the follow-up.
+
+Expected: only the exact approved Exception proposal authorizes standalone follow-up publication. The follow-up records the originating feature relation without entering its child/dependency graph. Deferral cannot itself make unexplained live changes deliverable; the original run still satisfies reconciliation and residual Delivery checks. No branch or Feature Run starts automatically after merge. The later explicitly invoked run waits until the original pull request has merged and passes a new Workspace Gate. Invalid variants remain at Exception and do not publish.

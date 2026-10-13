@@ -43,7 +43,7 @@ Start every `$ai-workflow` user-facing reply with a compact status line naming t
 8. After ticket-level verification and review pass, create one local ticket commit. Then advance to the next dependency-ready ticket. Record each attempt before deciding whether it passed, needs an owned fix, or enters Exception.
 9. After all ticket commits, enter `configuration-reconciliation`. Derive the current provenance view from the mutation ledger and validate it against the live Git diff. Do not begin feature review while an event is missing, a category or hash chain is invalid, a baseline hunk changed, or a mutation is unexplained.
 10. After reconciliation passes, run feature-level verification and a fresh `$code-review` across the complete branch. Record each feature-level round, including retries after findings.
-11. Present the Delivery Gate. Approval enters `delivery-approved` and authorizes only its exact push and pull-request bundle. Enter `complete` only after both operations succeed; otherwise retain the nonterminal failure and enter Exception as needed. Never merge or close issues directly.
+11. Validate reconciled Delivery against the live index and worktree. Require clean surfaces or only exact unchanged baseline unrelated hunks; disclose every residual path/hunk/hash in the existing Delivery Gate. Its single approval covers their continued presence and the exact push/PR bundle. Approval enters `delivery-approved`; enter `complete` only after both operations succeed. Changed or unexplained residuals return to reconciliation or Exception. Never merge or close issues directly.
 
 ## Invoke independent Skills
 
@@ -64,5 +64,7 @@ Honor natural-language stopping points and return current artifacts without pret
 At an Exception Gate, pause workers and present the stage, blocker, attempts, evidence, options, recommendation, and impact. Include the ordered round ledger accumulated so far when the run stops. Ask one consequential decision question. Continue only when the decision supplies the missing authority or evidence. Stop a review loop when the same blocker repeats without new evidence.
 
 ## Finish
+
+An explicitly approved Exception may publish a standalone deferred configuration GitHub issue containing exact path/hunk/hash evidence, provenance, reason, and originating feature relationship, outside the parent's child-ticket graph. It never starts a post-merge branch or run. After the originating PR merges, a later requested Feature Run needs a new Workspace Gate. Follow [delivery.md](references/delivery.md).
 
 Complete only after the approved push and pull-request creation succeed. Report the parent specification, tickets, ticket commits, the complete ordered round ledger, verification, both review axes, pull request, and accepted limitations. A stopping-point or blocked-run report also includes the ledger accumulated so far. Passing deterministic checks alone never establishes release readiness or external integration success.

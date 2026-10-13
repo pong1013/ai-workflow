@@ -4,6 +4,8 @@ GitHub Issues are the only supported tracker for this release.
 
 ## Canonical artifacts
 
+Deferred configuration follow-ups are a separate standalone GitHub issue type authorized only by the exact Exception decision. Record originating feature relationship, reason, provenance and exact path/hunk/hash evidence; keep them outside the current parent's child-ticket/dependency graph. Follow [delivery.md](delivery.md); neither receipt validation nor the current Ticket Breakdown Gate authorizes their publication, and publication cannot initiate a post-merge branch/run.
+
 - One GitHub parent issue is the canonical specification.
 - GitHub sub-issues are canonical implementation tickets.
 - Do not create a committed or `.scratch/` mirror of the specification or tickets.

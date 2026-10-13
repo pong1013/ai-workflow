@@ -121,7 +121,8 @@
     {"operation": "stage-ticket", "state": "ticket-commit", "authorizedBy": "ticket-commit-authority"},
     {"operation": "commit-ticket", "state": "ticket-commit", "authorizedBy": "ticket-commit-authority"},
     {"operation": "push-feature-branch", "state": "delivery-approved", "authorizedBy": "delivery"},
-    {"operation": "create-pull-request", "state": "delivery-approved", "authorizedBy": "delivery"}
+    {"operation": "create-pull-request", "state": "delivery-approved", "authorizedBy": "delivery"},
+    {"operation": "create-deferred-configuration-follow-up", "state": "exception", "authorizedBy": "exception"}
   ],
   "qualityPolicy": {
     "topLevelWorkers": ["implementation", "quality"],
@@ -179,6 +180,20 @@
     "projectKnowledge": "approved-ticket-or-explicit-alternative",
     "legacyCheckpointWithoutEvidence": "unverified",
     "blocksOn": ["invalid-provenance", "broken-hash-chain", "missing-event", "changed-baseline-hunk", "unexplained-mutation"]
+  },
+  "deliveryPolicy": {
+    "requiresReconciliation": true,
+    "pendingChanges": "clean-or-exact-unchanged-baseline-unrelated",
+    "residualDisclosure": "path-hunk-hash-in-existing-delivery-gate",
+    "residualApproval": "delivery",
+    "baselineDriftRoute": "configuration-reconciliation-or-exception",
+    "deferredFollowUp": {
+      "authority": "exception",
+      "artifact": "standalone-github-issue",
+      "inParentChildGraph": false,
+      "automaticPostMergeBranch": false,
+      "laterRun": "origin-pr-merged-and-new-workspace-gate"
+    }
   },
   "interactionPolicy": {
     "workflowReply": {

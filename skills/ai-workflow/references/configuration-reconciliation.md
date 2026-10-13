@@ -4,6 +4,8 @@ Configuration reconciliation accounts for durable repository changes before feat
 
 ## Workspace baseline
 
+Also capture `workspaceBaseline.pendingDiffHashes` before the first write. Those staged, unstaged, and untracked surface digests are required to prove unchanged residual work at Delivery; a final composite diff alone cannot detect staged edits cancelled in the worktree. Follow [delivery.md](delivery.md). CLI examples here describe this Plugin source repository's maintainer validator, not a universally installed runtime prerequisite; installed controllers must still produce equivalent live Git evidence and enforce these boundaries.
+
 Capture the baseline after workspace ownership is established and before the first Feature Run write. Anchor it to the resolved Feature Run base commit and enumerate every tracked, staged, unstaged, untracked, deleted, renamed, and binary diff. Each baseline entry has:
 
 - `path`: the repository-relative path reported by Git; a rename also retains its source in the hunk descriptor;

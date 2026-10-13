@@ -141,6 +141,8 @@ GitHub stores the canonical parent specification and ticket sub-issues. Ignored 
 
 ## Gates and delivery
 
+Configuration reconciliation validates action-level provenance against the live Git diff before feature review. Delivery allows a clean index/worktree or exact unchanged baseline unrelated hunks disclosed in the existing Delivery Gate; that single approval also covers their continued presence. Deferred configuration requires an Exception-approved standalone GitHub follow-up, and a later run requires a new Workspace Gate after the originating PR merges. See the [complete configuration reconciliation guide](docs/configuration-reconciliation.md) for receipt and ledger schemas, routing, trust boundaries, resume, and troubleshooting.
+
 - **Setup Confirmation Gate:** authorizes only the displayed per-repository setup files.
 - **Workspace Gate:** authorizes the displayed branch/worktree or ownership change.
 - **Contract Persistence Gate:** authorizes only the displayed Project Contract.
