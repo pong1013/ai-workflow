@@ -162,7 +162,8 @@
     },
     "currentView": {
       "derivedFromLedger": true,
-      "validateAgainstLiveDiff": true
+      "validateAgainstLiveDiff": true,
+      "cancelledChains": "retain-history-and-prove-base-and-live-restoration"
     },
     "receiptImport": {
       "evidenceOnly": true,

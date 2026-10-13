@@ -210,6 +210,7 @@ EXPECTED_MUTATION_LEDGER_POLICY = {
     "currentView": {
         "derivedFromLedger": True,
         "validateAgainstLiveDiff": True,
+        "cancelledChains": "retain-history-and-prove-base-and-live-restoration",
     },
     "receiptImport": {
         "evidenceOnly": True,
@@ -562,6 +563,90 @@ def entry_key(entry: dict[str, Any]) -> tuple[str, str]:
     return (entry["path"], entry["hunk"])
 
 
+def cancelled_chain_anchor(
+    root: Path, base_commit: str, key: tuple[str, str],
+    live_entries: dict[tuple[str, str], dict[str, Any]],
+    baseline_entries: dict[tuple[str, str], dict[str, Any]],
+    initial_hash: str,
+) -> str:
+    """Prove an absent hunk's original and restored sides from repository bytes."""
+    relative, identifier = key
+    path = Path(relative)
+    if (path.is_absolute() or path.as_posix() != relative
+            or ".." in path.parts or not path.parts
+            or path.parts[0] == ".git"
+            or not (root.resolve() / path).parent.resolve().is_relative_to(root.resolve())):
+        raise ReconciliationError(f"unsafe cancelled mutation path: {key}")
+    tree = git(root, "ls-tree", "-z", base_commit, "--", f":(literal){relative}")
+    base_mode = tree.split(b" ", 1)[0] if tree else b"000000"
+    if tree and base_mode not in {b"100644", b"100755", b"120000"}:
+        raise ReconciliationError(f"unsupported cancelled mutation base entry: {key}")
+    before = commit_file_bytes(root, base_commit, relative)
+    after = repository_file_bytes(root, relative)
+    live_mode = git_file_modes(root, base_commit).get(relative, (base_mode, base_mode))[1]
+    target = root / relative
+    if base_mode == b"000000" and (target.exists() or target.is_symlink()):
+        # An ignored/untracked entry is not a restored absence, even if empty.
+        raise ReconciliationError(f"cancelled mutation path was not restored to absence: {key}")
+    if identifier == "file-mode":
+        if live_mode != base_mode:
+            raise ReconciliationError(f"cancelled mutation mode was not restored: {key}")
+        # Executable/symlink untracked views use the regular-file default as
+        # their initial mode, rather than emitting a creation mode of 000000.
+        if base_mode == b"000000" and initial_hash == sha256_bytes(b"100644"):
+            return initial_hash
+        return sha256_bytes(base_mode)
+    if live_mode != base_mode:
+        raise ReconciliationError(f"cancelled mutation mode was not restored: {key}")
+    if identifier == "whole-file":
+        if before != after:
+            raise ReconciliationError(f"cancelled whole-file mutation was not restored: {key}")
+        return sha256_bytes(before)
+    match = re.fullmatch(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?", identifier)
+    if match is None or base_mode not in {b"100644", b"100755"}:
+        raise ReconciliationError(f"unanchored or ambiguous cancelled mutation hunk: {key}")
+    start, count = int(match[1]), int(match[2] or "1")
+    new_start, new_count = int(match[3]), int(match[4] or "1")
+    if ((count > 0 and start < 1) or (new_count > 0 and new_start < 1)
+            or count == new_count == 0):
+        raise ReconciliationError(f"invalid cancelled mutation hunk range: {key}")
+    offset = start if count == 0 else start - 1
+    end = offset + count
+    # A fully restored file anchors the original side even for insertion or
+    # deletion. Canonical old/new boundary alignment still excludes shifted
+    # identities whose prior coordinate changes are not independently known.
+    new_offset = new_start if new_count == 0 else new_start - 1
+    if before == after and offset == new_offset:
+        lines = patch_records(before)
+        if offset > len(lines) or end > len(lines):
+            raise ReconciliationError(f"cancelled mutation hunk is outside repository bytes: {key}")
+        return sha256_bytes(b"".join(lines[offset:end]))
+    # With other live changes, hashes alone cannot map a count-changing or
+    # shifted historical identity back to its original coordinates safely.
+    if count < 1 or (start, count) != (new_start, new_count):
+        raise ReconciliationError(f"shifted cancelled mutation hunk requires independent evidence: {key}")
+    for other_key in set(live_entries) | set(baseline_entries):
+        if other_key[0] != relative or other_key[1] == "file-mode":
+            continue
+        other = re.fullmatch(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?", other_key[1])
+        if other is None:
+            raise ReconciliationError(f"ambiguous same-file cancelled mutation: {key}")
+        other_start, other_count = int(other[1]), int(other[2] or "1")
+        other_new_count = int(other[4] or "1")
+        other_offset = other_start if other_count == 0 else other_start - 1
+        if (other_offset < end and other_offset + other_count > offset
+                or other_count == 0 and offset <= other_offset < end
+                or other_offset < offset and other_count != other_new_count):
+            raise ReconciliationError(f"overlapping or shifted cancelled mutation hunk: {key}")
+    before_lines, after_lines = patch_records(before), patch_records(after)
+    if end > len(before_lines) or end > len(after_lines):
+        raise ReconciliationError(f"cancelled mutation hunk is outside repository bytes: {key}")
+    original, restored = b"".join(before_lines[offset:end]), b"".join(after_lines[offset:end])
+    if original != restored:
+        raise ReconciliationError(f"cancelled mutation hunk was not restored: {key}")
+    return sha256_bytes(original)
+
+
 def validate_reconciliation_instance(root: Path, instance_path: Path) -> None:
     try:
         instance = require_mapping(
@@ -738,7 +823,17 @@ def validate_reconciliation_instance(root: Path, instance_path: Path) -> None:
         live_entry = live_entries.get(key)
         baseline_entry = baseline_entries.get(key)
         if live_entry is None:
-            raise ReconciliationError(f"mutation chain has no live current-view hunk: {key}")
+            if baseline_entry is not None:
+                raise ReconciliationError(f"baseline hunk is missing or changed: {key}")
+            if len(chain) < 2:
+                raise ReconciliationError(f"mutation chain has no live current-view hunk: {key}")
+            anchor = cancelled_chain_anchor(
+                root, resolved_instance_base, key, live_entries, baseline_entries,
+                chain[0]["beforeHash"],
+            )
+            # Retain every historical event; only its net-zero current view is
+            # absent. Endpoint equality alone cannot establish this anchor.
+            live_entry = {"beforeHash": anchor, "afterHash": anchor}
         expected_initial = (
             baseline_entry.get("afterHash", baseline_entry["contentHash"])
             if baseline_entry is not None

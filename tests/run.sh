@@ -254,6 +254,7 @@ policy = json.loads(pathlib.Path(sys.argv[1]).read_text())["mutationLedgerPolicy
 assert policy["currentView"] == {
     "derivedFromLedger": True,
     "validateAgainstLiveDiff": True,
+    "cancelledChains": "retain-history-and-prove-base-and-live-restoration",
 }
 PY
 }
@@ -2065,6 +2066,7 @@ run_test "reconciliation rejects a stale ledger after form-feed suffix mutation"
 run_test "reconciliation rejects binary baseline mode drift without an event" test_reconciliation_rejects_binary_baseline_mode_drift
 run_test "reconciliation rejects hidden raw-byte drift with a lossy textconv and visible hunk" test_reconciliation_rejects_stale_textconv_event
 run_test "Delivery validates concrete Git residuals and approved standalone deferral evidence" python3 "${ROOT_DIR}/tests/delivery_acceptance.py"
+run_test "Reconciliation preserves proven canceled action histories and rejects forged anchors" python3 "${ROOT_DIR}/tests/cancellation_acceptance.py"
 run_test "runtime safety contract is wired" test_runtime_safety_contract
 run_test "old ship-feature controller is not published" test_old_controller_is_not_published
 
