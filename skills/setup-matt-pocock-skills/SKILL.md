@@ -33,7 +33,7 @@ Default to one root `CONTEXT.md` and `docs/adr/`. Offer a `CONTEXT-MAP.md` with 
 
 ## Preview and write
 
-Show the complete proposed files and instruction blocks before mutation. Obtain the Setup Confirmation Gate, then recheck repository identity and status.
+Show the complete proposed files and instruction blocks before mutation. The plan preserves compatible `.gitignore` content and adds `.agents/setup/` only when existing rules do not effectively ignore the receipt. Obtain the Setup Confirmation Gate, then recheck repository identity and status.
 
 Use these seed files as relevant:
 
@@ -66,6 +66,8 @@ python3 <skill-root>/scripts/configure_repository.py <repository-root> \
 
 The preview prints a `Setup plan token` bound to the repository, fetch/push remote URLs when applicable, selected options, target-file set, baseline contents, and proposed contents. After the Setup Confirmation Gate, rerun the identical command with `--apply --confirmed --plan-token <approved-token>`. Any intervening file, routing, option, or remote change invalidates the token and requires a new preview and approval. The helper refuses an unconfirmed write, preserves content outside the managed block, rejects symlink targets, and is idempotent. Non-GitHub configuration remains truthful, but `$ai-workflow` cannot execute it in this release.
 
+A successful mutating apply also writes `.agents/setup/receipt.json`. The `.agents/setup/` ignore rule is an ordinary setup-managed `.gitignore` mutation: it appears in the preview, approved target set, plan token, apply drift checks, and receipt evidence, while all compatible existing `.gitignore` content is preserved. Setup uses Git in an isolated temporary repository, mirroring relevant nested `.agents` ignore files, to confirm the proposed final content effectively ignores `.agents/setup/receipt.json`; a later root negation therefore causes an explicit appended rule, while an incompatible lower-level negation stops setup before writes. Apply repeats this validation before writing any setup-managed output. Setup never writes `.git/info/exclude`. The credential-free receipt records repository and approved-plan identity plus setup/configuration provenance and before-and-after hashes for only the managed outputs changed by that apply. Unchanged managed outputs remain bound into the plan token. It is evidence only and explicitly carries no approval authority. A no-op apply neither creates nor replaces a receipt.
+
 Update instruction files by these rules:
 
 - only `AGENTS.md` exists: update `AGENTS.md`;
@@ -93,7 +95,14 @@ Update only the bounded block; preserve all surrounding user content. If an unbo
 
 ## Validate and finish
 
-Run the bundled `scripts/validate_setup.py <repository-root>` after writing. `$ai-workflow` runs it with `--require-github --remote-name <name>` so the validator reads that remote from the live Git worktree and compares it with the concrete configuration. Show the diff and stop without staging, committing, pushing, or starting `$ai-workflow`.
+Run the bundled `scripts/validate_setup.py <repository-root>` after writing. The validator uses the same isolated Git ignore check as preview and apply, accepting effective broader rules such as `.agents/` and rejecting ineffective or negated coverage. This checks ignore rules independently of whether the receipt is tracked; tracked files still remain observable to reconciliation. `$ai-workflow` runs it with `--require-github --remote-name <name>` so the validator reads that remote from the live Git worktree and compares it with the concrete configuration. Validate the receipt before handing it to another task:
+
+```bash
+python3 <skill-root>/scripts/validate_setup_receipt.py <repository-root> \
+  --plan-token <approved-token>
+```
+
+Receipt validation re-renders every output in the approved setup plan and rejects repository, plan, target-path, live-content, hash-chain, or self-consistency drift. Complete `docs/agents/*.md` outputs must be render-equivalent; only the setup-owned bounded blocks are compared in `AGENTS.md` and `CLAUDE.md`. The receipt's `checksum` is the SHA-256 hash of canonical JSON with sorted keys and compact separators after omitting the `checksum` field. This unkeyed checksum detects accidental corruption and non-self-consistent local edits; it is not a signature and cannot authenticate evidence against a local actor able to rewrite both receipt and checksum. Receipt validation never supplies approval authority. Show the diff and stop without staging, committing, pushing, or starting `$ai-workflow`.
 
 Users may edit `docs/agents/*.md` later. Re-run this Skill only to validate or intentionally change the repository setup.
 

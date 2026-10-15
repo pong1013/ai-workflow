@@ -13,7 +13,7 @@ No two writers may own the same path or hunk concurrently. An inability to isola
 
 ## Implementation Agent
 
-Give the agent the approved parent specification, current ticket, agreed seams, repository instructions, Project Contract, baseline, and ownership. It invokes the adapted `$implement`, uses `$tdd` only within assigned ownership, runs focused checks, and returns mutations, evidence, and blockers. It never commits, pushes, publishes tracker content, changes the specification, or approves its own work.
+Give the agent the approved parent specification, current ticket, agreed seams, repository instructions, Project Contract, path/hunk/hash baseline, current mutation-ledger view, and ownership. It invokes the adapted `$implement`, uses `$tdd` only within assigned ownership, runs focused checks, and returns mutations with their before/after identity, evidence, and blockers. It never commits, pushes, publishes tracker content, changes the specification, or approves its own work.
 
 ## Quality Agent
 
@@ -24,6 +24,7 @@ Give the agent the specification and ticket independently of implementation reas
 ## Routing
 
 - Maintain one append-only, run-wide round ledger in execution order. Open a ticket round when workers begin an implementation/quality attempt, including a retry, and close it after the joined work, checks, and read-only review are assessed. Open a feature round for each feature-wide verification/review attempt after ticket commits, including a retry after routed findings. Give each entry a monotonic global `sequence`, a `roundNumber` that starts at 1 and increments separately for each ticket or the feature-review scope, scope (`ticket` with issue ID or `feature`), and baseline or commit/diff identity. Never replace an entry with the latest result.
+- Keep the round ledger distinct from the append-only mutation ledger. After each worker action, compare the reported paths/hunks with the actual diff and append one action-level mutation event per affected hunk. Require the previous event's `afterHash` to equal the next event's `beforeHash` for the same path/hunk chain. Use `ticket-owned` only for work inside the approved ticket; missing events, invalid categories, broken chains, or unexplained live changes block the round.
 - For every round, record the required fields in `state-machine.json`'s `roundLedgerPolicy`: sequence; round number; scope; ticket ID (or `null` for a feature round); implementation changes (owned paths or hunks and a concise summary, or explicitly `no change`); checks; separate Standards and Spec review outcomes; and next action. Each check records its exact command or check name, outcome (`pass`, `fail`, or `not-applicable`), and evidence reference when available. Give every `not-applicable` outcome a reason, including an interrupted check that was not run. Review outcomes include findings or why review was not applicable. A failed or interrupted round is still an entry; never turn an unrun check into a pass by omission.
 - Keep the ledger distinct from the latest actionable verification summary. A retry adds a new entry and links back to the failed round; preserve the earlier result. Before a ticket commit or feature pass, require a closed passing round for that scope and current diff. Show the relevant ledger entries when reporting progress, a stopping point, or an Exception, and include all entries at the Delivery Gate and in the final report.
 - Production findings return to the Implementation Agent.
@@ -35,3 +36,5 @@ Give the agent the specification and ticket independently of implementation reas
 ## Ticket acceptance
 
 A ticket passes only when acceptance criteria are covered, focused checks and complete Contract verification pass, no blocking Standards or Spec finding remains, and post-verification status contains no unexplained mutation. Only then may the controller create the ticket commit.
+
+After the final ticket commit, do not start feature review directly. Enter `configuration-reconciliation` and apply [configuration-reconciliation.md](configuration-reconciliation.md). Feature review begins only after the derived ledger view matches the live diff and the `configuration-reconciled` evidence resolves.

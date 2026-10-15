@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "initialState": "repository-setup",
   "terminalStates": ["complete", "cancelled", "blocked"],
   "stageSkills": {
@@ -23,6 +23,7 @@
     "ticket-work",
     "ticket-quality",
     "ticket-commit",
+    "configuration-reconciliation",
     "feature-review",
     "exception",
     "delivery",
@@ -48,7 +49,9 @@
     {"from": "ticket-quality", "event": "owned-findings", "to": "ticket-work", "gate": null, "automatic": true},
     {"from": "ticket-quality", "event": "ticket-quality-passed", "to": "ticket-commit", "gate": null, "automatic": true},
     {"from": "ticket-commit", "event": "ticket-committed-more-ready", "to": "ticket-work", "gate": null, "automatic": true},
-    {"from": "ticket-commit", "event": "ticket-committed-all-done", "to": "feature-review", "gate": null, "automatic": true},
+    {"from": "ticket-commit", "event": "ticket-committed-all-done", "to": "configuration-reconciliation", "gate": null, "automatic": true},
+    {"from": "configuration-reconciliation", "event": "owned-findings", "to": "ticket-work", "gate": null, "automatic": true},
+    {"from": "configuration-reconciliation", "event": "configuration-reconciled", "to": "feature-review", "gate": "configuration-reconciled", "automatic": true},
     {"from": "feature-review", "event": "owned-findings", "to": "ticket-work", "gate": null, "automatic": true},
     {"from": "feature-review", "event": "feature-review-passed", "to": "delivery", "gate": null, "automatic": true},
     {"from": "delivery", "event": "approve-delivery", "to": "delivery-approved", "gate": "delivery", "automatic": false},
@@ -68,6 +71,7 @@
       "ticket-work",
       "ticket-quality",
       "ticket-commit",
+      "configuration-reconciliation",
       "feature-review",
       "delivery",
       "delivery-approved"
@@ -92,6 +96,7 @@
     {"id": "ticket-breakdown", "kind": "human-gate"},
     {"id": "resume", "kind": "human-gate"},
     {"id": "ticket-quality-passed", "kind": "state-evidence"},
+    {"id": "configuration-reconciled", "kind": "state-evidence"},
     {"id": "exception", "kind": "human-gate"},
     {"id": "delivery", "kind": "human-gate"},
     {"id": "push-succeeded", "kind": "state-evidence"},
@@ -108,7 +113,7 @@
     {"operation": "create-or-switch-feature-branch", "state": "workspace", "authorizedBy": "workspace"},
     {"operation": "create-or-switch-feature-worktree", "state": "workspace", "authorizedBy": "workspace"},
     {"operation": "configure-checkpoint-ignore", "state": "workspace", "authorizedBy": "workspace"},
-    {"operation": "write-run-checkpoint", "states": ["intake", "resume", "grill", "specification", "ticketing", "ticket-work", "ticket-quality", "ticket-commit", "feature-review", "exception", "delivery", "delivery-approved"], "authorizedBy": "feature-request-and-workspace"},
+    {"operation": "write-run-checkpoint", "states": ["intake", "resume", "grill", "specification", "ticketing", "ticket-work", "ticket-quality", "ticket-commit", "configuration-reconciliation", "feature-review", "exception", "delivery", "delivery-approved"], "authorizedBy": "feature-request-and-workspace"},
     {"operation": "write-project-knowledge", "state": "grill", "authorizedBy": "feature-request-and-workspace"},
     {"operation": "create-parent-specification-issue", "state": "specification", "authorizedBy": "specification"},
     {"operation": "create-ticket-sub-issues", "state": "ticketing", "authorizedBy": "ticket-breakdown"},
@@ -116,7 +121,8 @@
     {"operation": "stage-ticket", "state": "ticket-commit", "authorizedBy": "ticket-commit-authority"},
     {"operation": "commit-ticket", "state": "ticket-commit", "authorizedBy": "ticket-commit-authority"},
     {"operation": "push-feature-branch", "state": "delivery-approved", "authorizedBy": "delivery"},
-    {"operation": "create-pull-request", "state": "delivery-approved", "authorizedBy": "delivery"}
+    {"operation": "create-pull-request", "state": "delivery-approved", "authorizedBy": "delivery"},
+    {"operation": "create-deferred-configuration-follow-up", "state": "exception", "authorizedBy": "exception"}
   ],
   "qualityPolicy": {
     "topLevelWorkers": ["implementation", "quality"],
@@ -142,6 +148,53 @@
     "notApplicableRequiresReason": true,
     "preserveFailedRounds": true,
     "reportSurfaces": ["checkpoint", "stopped-run", "delivery-gate", "final"]
+  },
+  "workspaceBaselinePolicy": {
+    "granularity": "path-hunk-hash",
+    "requiredFields": ["path", "hunk", "contentHash"]
+  },
+  "mutationLedgerPolicy": {
+    "appendOnly": true,
+    "eventRequiredFields": ["sequence", "stage", "ticket", "provenance", "path", "hunk", "beforeHash", "afterHash"],
+    "provenanceCategories": ["ticket-owned", "setup/configuration", "project knowledge", "pre-existing unrelated"],
+    "hashChain": {
+      "beforeMatchesPreviousAfter": true
+    },
+    "currentView": {
+      "derivedFromLedger": true,
+      "validateAgainstLiveDiff": true,
+      "cancelledChains": "retain-history-and-prove-base-and-live-restoration"
+    },
+    "receiptImport": {
+      "evidenceOnly": true,
+      "approvalAuthority": false,
+      "validateLiveDiff": true,
+      "requiredFields": ["eventSequence", "evidenceOnly", "approvalAuthority", "terminalHash", "receiptPath", "receiptChecksum"]
+    }
+  },
+  "reconciliationPolicy": {
+    "state": "configuration-reconciliation",
+    "setupRouting": {
+      "mechanical": "first-blocker-ticket",
+      "semanticOrScopeOrContractConflict": "exception"
+    },
+    "projectKnowledge": "approved-ticket-or-explicit-alternative",
+    "legacyCheckpointWithoutEvidence": "unverified",
+    "blocksOn": ["invalid-provenance", "broken-hash-chain", "missing-event", "changed-baseline-hunk", "unexplained-mutation"]
+  },
+  "deliveryPolicy": {
+    "requiresReconciliation": true,
+    "pendingChanges": "clean-or-exact-unchanged-baseline-unrelated",
+    "residualDisclosure": "path-hunk-hash-in-existing-delivery-gate",
+    "residualApproval": "delivery",
+    "baselineDriftRoute": "configuration-reconciliation-or-exception",
+    "deferredFollowUp": {
+      "authority": "exception",
+      "artifact": "standalone-github-issue",
+      "inParentChildGraph": false,
+      "automaticPostMergeBranch": false,
+      "laterRun": "origin-pr-merged-and-new-workspace-gate"
+    }
   },
   "interactionPolicy": {
     "workflowReply": {

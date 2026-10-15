@@ -90,7 +90,7 @@ Expected: workers never commit. The controller commits ticket one after quality 
 
 Fixture: all ticket commits exist on a local feature branch.
 
-Expected: runs complete verification and a fresh Standards/Spec `$code-review` from the Feature Run baseline. After pass, displays exact commits, diff, evidence, limitations, remote, target, push, PR title/body, and closing references. Nothing is pushed before explicit Delivery approval. Approval enters `delivery-approved`; only successful push and pull-request creation produce `delivery-succeeded` and `complete`. Either failure remains nonterminal and enters Exception or a bounded retry.
+Expected: enters `configuration-reconciliation` before feature review, derives the current provenance view from the append-only mutation ledger, and compares it with the complete run surface from Feature Run base through committed, staged, unstaged, and untracked changes while preserving unchanged baseline-unrelated hunks. This is deterministic state evidence, not a new user Gate. Only `configuration-reconciled` evidence permits complete verification and a fresh Standards/Spec `$code-review` from the Feature Run baseline. After pass, displays exact commits, diff, evidence, limitations, remote, target, push, PR title/body, and closing references. Nothing is pushed before explicit Delivery approval. Approval enters `delivery-approved`; only successful push and pull-request creation produce `delivery-succeeded` and `complete`. Either failure remains nonterminal and enters Exception or a bounded retry.
 
 ## 16. Issues remain open until merge
 
@@ -163,3 +163,57 @@ Expected: the checkpoint retains both ticket rounds in order with distinct round
 Fixture: resume the run from scenario 26 with current-task approval where needed. All tickets pass and commit. The first feature-level verification round runs a named complete check that fails, records no implementation change, and routes a correction to ticket work. The next feature-level round runs complete checks and fresh Standards/Spec review from the Feature Run baseline, all passing. Present the Delivery Gate, then complete delivery in a disposable approved remote.
 
 Expected: feature-level rounds use feature scope and distinct round numbers, record exact checks and outcomes, both review axes, implementation changes or "no change", and the next action. The Delivery Gate evidence and final report include the complete ordered ledger: both ticket rounds from scenario 26 and both feature rounds, including the failed checks and retries. The Delivery Gate still requires explicit approval, and success still requires both push and pull-request creation.
+
+## 28. Reconciliation rejects invalid or unexplained mutations
+
+Fixture: after the final ticket commit, exercise separate disposable runs with an invalid provenance category, duplicate or out-of-order event sequence, broken per-hunk before/after chain, missing event, changed baseline-unrelated hunk, and an unexplained live hunk. Include a previously valid `old\n` → `new\n` ledger event whose live text loses its final LF, a valid ledger for `new\rhidden-one\n` whose live text becomes `new\rhidden-two\n` (also exercise CRLF, vertical-tab, and form-feed content), and a pre-existing binary baseline hunk whose bytes remain unchanged while its mode changes from `100644` to `100755` without a ledger event. Configure a lossy textconv that hides `hidden-*` suffixes, retain a visible `visible` → `changed` hunk, accept a ledger for raw `changed hidden-two\n`, then reject that stale ledger after raw content becomes `changed hidden-three\n`; both emitted content and terminal hashes must change.
+
+Expected: each case remains in `configuration-reconciliation`; none produces `configuration-reconciled` evidence or starts feature review. An owned implementation or test defect returns through ticket work, quality, commit, and reconciliation. A consequential classification, scope, Contract, or evidence gap enters Exception. Earlier mutation and round history remains append-only.
+
+## 29. Setup receipt import is evidence, not authority
+
+Fixture: a real approved setup apply creates and validates a receipt for A→B before the Feature Run captures baseline B. Its changed hunk is imported with the original A→B hashes and terminal B, followed by variants whose import claims approval authority, whose receipt checksum drifted, whose terminal hash does not bind to the baseline/live hunk, and whose live output drifted.
+
+Expected: the valid receipt imports only its changed hunks as `setup/configuration` evidence and is not applied twice. Reconciliation accepts the historical event by binding its terminal B to captured baseline B rather than requiring its pre-run A to start a new B-based mutation chain. Mechanical preview-approved setup becomes the Feature Run's first blocker ticket; semantic, scope-expanding, or Contract-conflicting setup enters Exception. Authority-bearing, checksum-drifted, terminal-hash-mismatched, or drifted imports remain unverified and cannot satisfy reconciliation.
+
+## 30. Project knowledge and legacy checkpoints require evidence
+
+Fixture: one run writes durable project knowledge during Grill without ticket ownership; another resumes a checkpoint created before mutation provenance existed.
+
+Expected: the project-knowledge write must enter approved ticket scope or an explicitly approved alternative before reconciliation. The legacy checkpoint remains unverified and is never silently upgraded; independently valid evidence may be imported, otherwise the unresolved provenance appears at Resume or Exception.
+
+## 31. Clean reconciliation precedes feature review and Delivery
+
+Fixture: all ticket changes are verified and committed in a disposable clean repository. Validate the concrete mutation ledger against the Feature Run base, then complete feature verification and a fresh Standards/Spec review. Repeat with a missing mutation event while retaining a declared `configurationReconciled: true` flag.
+
+Expected: only the successful live reconciliation enters feature review. A clean index and worktree pass the Delivery residual check; the declared flag cannot bypass invalid live reconciliation. The existing Delivery Gate approves the exact push and pull-request bundle, and both operations must succeed before completion.
+
+## 32. Exact unchanged unrelated residuals use the existing Delivery Gate
+
+Fixture: capture unrelated staged, unstaged, and untracked changes at Workspace with exact path/hunk/hash and independent pending-surface hashes. Complete and commit all ticket-owned changes without touching these residuals. Supply the unchanged residual entries in the Delivery evidence. Repeat with omitted or changed disclosure hashes, and with unchanged final file bytes but a transfer from unstaged to staged state.
+
+Expected: the exact unchanged unrelated baseline is permissible only with exact disclosure in the existing Delivery Gate; that same approval covers its presence without adding a new Gate. Missing or changed evidence blocks Delivery and routes to reconciliation or Exception. A staged/unstaged transfer is baseline drift even when the final durable diff is identical.
+
+## 33. Net-zero durable diff is not a clean Git workspace
+
+Fixture: starting with base content A, stage content B, then restore worktree content A while leaving index B. The final base-to-worktree diff is empty but `git status` still shows staged and unstaged changes. The Workspace baseline was clean.
+
+Expected: Delivery fails because the actual index and worktree have unexplained pending changes. No `configurationReconciled` declaration or empty final-diff view can turn this into a clean workspace. Independent staged and unstaged surface evidence must be checked before Delivery.
+
+## 34. Approved configuration deferral creates only a standalone follow-up
+
+Fixture: present an Exception proposal naming the exact deferred configuration path/hunk/hash, provenance category, reason, and originating feature. Approve that exact standalone GitHub follow-up issue. Exercise variants without Exception approval, without exact evidence, with current-parent child/dependency membership, and with automatic post-merge branch creation. After merging the original feature, explicitly invoke a later run for the follow-up.
+
+Expected: only the exact approved Exception proposal authorizes standalone follow-up publication. The follow-up records the originating feature relation without entering its child/dependency graph. Deferral cannot itself make unexplained live changes deliverable; the original run still satisfies reconciliation and residual Delivery checks. No branch or Feature Run starts automatically after merge. The later explicitly invoked run waits until the original pull request has merged and passes a new Workspace Gate. Invalid variants remain at Exception and do not publish.
+
+## 35. Setup preserves an effective broad receipt ignore rule
+
+Fixture: a disposable repository has a valid GitHub origin and an existing user-owned `.gitignore` with `.agents/`. Preview setup, apply the exact approved plan token, then run receipt validation and general setup validation with the required GitHub remote. Separately append an effective `!.agents/setup/` negation after a valid setup, and retain the fixtures that repair a root negation or reject an ineffective proposed rule caused by a nested ignore file.
+
+Expected: the broad rule produces no `.gitignore` preview mutation and its bytes survive apply unchanged. Git ignores the resulting receipt, and both validators pass. An effective negation fails general setup validation even when the literal `.agents/setup/` line remains. Setup repairs a repairable root negation only through its preview-approved write; an ineffective proposed rule fails before managed files or receipts are written.
+
+## 36. Proven canceled actions retain their append-only history
+
+Fixture: commit base text `A\n`, record a real Git-derived ticket-owned `A\n` → `B\n` hunk, then record its inverse and restore committed `A\n` with clean index/worktree. Keep both events and a clean captured baseline. Repeat with embedded CR bytes, binary whole-file changes, mode changes, untracked creation/deletion, and a canceled text hunk alongside an accounted distant live hunk. Record insertion/deletion inverses with their original historical hunk identity and independently Git-derived side hashes. Negative variants forge only the initial hash, only the terminal hash, both equal endpoints, an unknown/out-of-range hunk, a broken link, or subsequent live drift. Also exercise count-changing cancellation alongside a remaining live hunk and disappearance of a pre-existing unrelated baseline hunk.
+
+Expected: proven unchanged-range text, whole-file, mode, and absent untracked cancellations reconcile without removing history; clean Git state can then pass Delivery. Count-changing insertion/deletion histories also reconcile when exact whole-file base/live restoration proves the original side range. Equal endpoint hashes alone do not establish baseline anchoring. Invalid anchors, chains, ranges, drift, count-changing cancellation with ambiguous remaining same-file changes, and disappearance of baseline unrelated evidence remain blocked. Preserve scenario 33: a staged `B` with worktree `A` still blocks Delivery even after a valid earlier cancellation.

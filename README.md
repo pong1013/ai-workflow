@@ -20,7 +20,9 @@ flowchart LR
     R -->|"passed"| K["Controller ticket commit"]
     R -->|"owned findings"| I
     K -->|"more tickets"| I
-    K -->|"all tickets"| F["Feature verify + review"]
+    K -->|"all tickets"| CR["Configuration reconciliation"]
+    CR -->|"configuration-reconciled"| F["Feature verify + review"]
+    CR -->|"owned findings"| I
     F --> D["Delivery Gate"]
     D --> PR["Push + pull request"]
 ```
@@ -89,7 +91,16 @@ In each repository, explicitly run:
 $setup-matt-pocock-skills
 ```
 
-The setup Skill inspects remotes, repository instructions, domain docs, and ADRs; previews `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and bounded `AGENTS.md`/`CLAUDE.md` changes; then waits for confirmation before writing. The preview emits a plan token, and apply refuses any changed file set, content, option, or fetch/push remote until the new diff is approved. It validates and shows the diff but never commits or pushes.
+The setup Skill inspects remotes, repository instructions, domain docs, and ADRs; previews the preserved-content `.gitignore` rule for `.agents/setup/`, `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and bounded `AGENTS.md`/`CLAUDE.md` changes; then waits for confirmation before writing. The preview emits a plan token, and apply refuses any changed file set, content, option, or fetch/push remote until the new diff is approved. The ignore rule is part of that exact approved file set and is never written silently to `.git/info/exclude`. Setup asks Git in an isolated temporary repository, with relevant nested `.agents` ignore files mirrored, to verify the proposed `.gitignore` effectively ignores the receipt. A later root negation is repaired in the preview; an incompatible lower-level negation stops before any repository write. Apply repeats the check before writing. Setup validates and shows the diff but never commits or pushes.
+
+A successful mutating apply writes an ignored `.agents/setup/receipt.json` for handoff to a later Codex task. Existing effective broader ignore rules such as `.agents/` are preserved; setup validation uses the same isolated Git check as preview and apply rather than requiring a literal `.agents/setup/` rule. The receipt records only the outputs changed by that apply, with `setup/configuration` provenance and path/hunk before-and-after hashes; unchanged managed outputs remain part of the approved plan and are re-rendered during validation. A no-op apply does not create or replace a receipt. Before handoff, validate the live repository and, when retaining the preview token, its exact approved plan:
+
+```bash
+python3 skills/setup-matt-pocock-skills/scripts/validate_setup_receipt.py . \
+  --plan-token <approved-token>
+```
+
+The next `$ai-workflow` task validates the receipt against repository identity, current managed outputs, and the plan binding before importing its mutations into Feature Run reconciliation. A valid receipt is evidence of locally self-consistent setup output, not approval authority: it cannot publish an issue, authorize a ticket or commit, or replace a Gate. Its unkeyed checksum detects accidental corruption and non-self-consistent local edits. It is not a signature and does not authenticate evidence against a local actor who can rewrite both the receipt and checksum; that adversarial model requires an external trust anchor and is outside this release.
 
 This release of `$ai-workflow` requires the resulting tracker configuration to select GitHub. A valid GitLab or Local Markdown setup remains truthful configuration, but `$ai-workflow` stops at the Exception Gate because those execution paths are unsupported. Jira, Linear, and other custom tracker configurations are not accepted by this release's setup contract.
 
@@ -126,9 +137,11 @@ The workflow reads:
 
 If Matt setup is missing, `$ai-workflow` stops before creating a Feature Run. If the Project Contract is missing, it performs Contract Discovery and obtains approval before persistence.
 
-GitHub stores the canonical parent specification and ticket sub-issues. Ignored `.agents/runs/<feature-id>.json` files store disposable local controller checkpoints. Losing a checkpoint does not lose the work facts; an explicit GitHub parent issue can reconstruct the run, but old approvals are not silently restored.
+GitHub stores the canonical parent specification and ticket sub-issues. Ignored `.agents/runs/<feature-id>.json` files store disposable local controller checkpoints, while ignored `.agents/setup/receipt.json` carries non-authoritative setup provenance across tasks. Losing either local artifact never restores or implies approval; an explicit GitHub parent issue can reconstruct work facts, but old approvals are not silently restored.
 
 ## Gates and delivery
+
+Configuration reconciliation validates action-level provenance against the live Git diff before feature review. Canceled historical actions remain in the ledger and pass only with independently proven base/live restoration; equal endpoint hashes alone are insufficient. Delivery allows a clean index/worktree or exact unchanged baseline unrelated hunks disclosed in the existing Delivery Gate; that single approval also covers their continued presence. Deferred configuration requires an Exception-approved standalone GitHub follow-up, and a later run requires a new Workspace Gate after the originating PR merges. See the [complete configuration reconciliation guide](docs/configuration-reconciliation.md) for receipt and ledger schemas, routing, cancellation limits, trust boundaries, resume, and troubleshooting.
 
 - **Setup Confirmation Gate:** authorizes only the displayed per-repository setup files.
 - **Workspace Gate:** authorizes the displayed branch/worktree or ownership change.

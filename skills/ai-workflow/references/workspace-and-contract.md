@@ -13,9 +13,11 @@ A bootstrap Contract may support Grill and specification drafting, but cannot au
 Before the first repository write or branch mutation:
 
 1. Inspect branch, status, diff, worktrees, default branch, and naming policy.
-2. Record exact pre-existing paths and hunks.
-3. Reuse a clean feature-dedicated branch or Codex-managed worktree after recording its baseline.
+2. Resolve the Feature Run base commit and record every pre-existing diff at path/hunk/hash granularity before the first run write, using the validator's emitted reconciliation view. Follow [configuration-reconciliation.md](configuration-reconciliation.md); a path-only list is insufficient.
+3. Capture `pendingDiffHashes` using `--emit-delivery-view` before writes: retain separate staged, unstaged, and untracked raw surface digests in `workspaceBaseline`. Reuse a clean feature-dedicated branch or Codex-managed worktree after recording its baseline.
 4. Obtain Workspace Gate approval before creating or switching a branch or worktree, or when ownership is ambiguous.
 5. Never stash, discard, overwrite, stage, or absorb unrelated work.
 
 Contract Discovery itself may need to write before a normal feature workspace exists. In that case, present a bootstrap workspace bundle covering only the Contract path and any exact instruction/config updates. Reinspect status after approval and before writing, then record bootstrap workspace evidence so the state machine's composite Contract-write authority can be satisfied.
+
+Every repository mutation after baseline capture must append an action-level event with the exact provenance category and before/after hashes. A workspace approval permits preservation of baseline work; it does not reclassify that work or authorize a workflow action to modify its hunks. If a baseline hunk changes, stop treating it as `pre-existing unrelated` and resolve it through reconciliation or Exception.
