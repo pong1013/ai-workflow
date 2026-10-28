@@ -167,7 +167,7 @@ The approved scope, sequence, acceptance criteria, and cross-repository rollout 
 ## Development
 
 ```bash
-python3 -m pip install --requirement requirements-dev.txt
+python3 -m pip install --require-hashes --requirement requirements-dev.txt
 make verify
 make canonical-validate
 ```
