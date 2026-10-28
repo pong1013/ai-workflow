@@ -167,12 +167,13 @@ The approved scope, sequence, acceptance criteria, and cross-repository rollout 
 ## Development
 
 ```bash
-python3 -m pip install --requirement requirements-dev.txt
+python3 -m pip install --require-hashes --requirement requirements-dev.txt
 make verify
-make canonical-validate
 ```
 
 `make verify` covers deterministic Plugin, Skill, provenance, state/authority, link, and negative-fixture checks. [Behavioral scenarios](evals/scenarios.md) and the [integration matrix](evals/integration-matrix.md) require fresh-task and external evidence; deterministic success alone never means the Plugin is release-ready.
+
+`make canonical-validate` is a separate external validation gate and requires validator scripts outside this repository. Its current target runs the official Skill `quick_validate.py` and expects `plugin-creator/scripts/validate_plugin.py`. The [checked official public `plugin-creator` source](https://github.com/openai/skills/tree/e940b8a86138adf03972802b990a1dfc57fcbf09/skills/.system/plugin-creator/scripts) at commit `e940b8a86138adf03972802b990a1dfc57fcbf09` contains `create_basic_plugin.py`, but does not supply that Plugin validator. Installing that source therefore does not make the target runnable; current official Plugin validation remains unverified. The repository's own `scripts/validate_plugin.py`, included in `make verify`, checks a maintained subset of Plugin requirements and does not establish official validation. These packaging checks are separate from dependency integrity and security vulnerability scanning.
 
 ## License and provenance
 
